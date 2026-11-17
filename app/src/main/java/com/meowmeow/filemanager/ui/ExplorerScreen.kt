@@ -80,7 +80,13 @@ fun ExplorerScreen(
     onCreateFolder: (String) -> Unit,
     onRename: (FileEntry, String) -> Unit,
     onDelete: (FileEntry) -> Unit,
-    onDismissError: () -> Unit
+    onDismissError: () -> Unit,
+    supportsFullAccess: Boolean,
+    hasFullAccess: Boolean,
+    usingDevice: Boolean,
+    onRequestFullAccess: () -> Unit,
+    onOpenDeviceStorage: () -> Unit,
+    onBrowseDownloads: () -> Unit
 ) {
     var creating by rememberSaveable { mutableStateOf(false) }
     var renameTarget by remember { mutableStateOf<FileEntry?>(null) }
@@ -122,9 +128,11 @@ fun ExplorerScreen(
                     }
                 },
                 actions = {
-                    if (state.hasRoot) {
-                        IconButton(onClick = onRefresh) {
-                            Icon(Icons.Default.Refresh, contentDescription = "Refresh files")
+                    if (state.hasRoot || supportsFullAccess) {
+                        if (state.hasRoot) {
+                            IconButton(onClick = onRefresh) {
+                                Icon(Icons.Default.Refresh, contentDescription = "Refresh files")
+                            }
                         }
                         Box {
                             IconButton(onClick = { optionsMenu = true }) {
@@ -136,6 +144,21 @@ fun ExplorerScreen(
                                     leadingIcon = { Icon(Icons.Default.FolderOpen, contentDescription = null) },
                                     onClick = { optionsMenu = false; onChooseFolder() }
                                 )
+                                if (supportsFullAccess) {
+                                    DropdownMenuItem(
+                                        text = { Text(if (hasFullAccess) "Device storage" else "Enable full file access") },
+                                        onClick = {
+                                            optionsMenu = false
+                                            if (hasFullAccess) onOpenDeviceStorage() else onRequestFullAccess()
+                                        }
+                                    )
+                                    if (hasFullAccess) {
+                                        DropdownMenuItem(
+                                            text = { Text("Downloads") },
+                                            onClick = { optionsMenu = false; onBrowseDownloads() }
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
@@ -172,11 +195,17 @@ fun ExplorerScreen(
                     Text("Your files, your paws", style = MaterialTheme.typography.headlineSmall)
                     Spacer(Modifier.size(8.dp))
                     Text(
-                        "Choose a folder to explore. MeowMeow only accesses folders you approve.",
+                        "Choose a folder to explore, or enable full file access to browse Downloads and shared storage.",
                         style = MaterialTheme.typography.bodyMedium
                     )
                     Spacer(Modifier.size(20.dp))
                     Button(onClick = onChooseFolder) { Text("Choose a folder") }
+                    if (supportsFullAccess) {
+                        Spacer(Modifier.size(12.dp))
+                        Button(onClick = if (hasFullAccess) onOpenDeviceStorage else onRequestFullAccess) {
+                            Text(if (hasFullAccess) "Browse device storage" else "Enable full file access")
+                        }
+                    }
                 }
             }
             else -> {

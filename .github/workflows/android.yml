@@ -2,7 +2,7 @@ name: Android build
 
 on:
   push:
-    branches: [main, feat/android-file-explorer]
+    branches: [main, feat/android-file-explorer, feat/full-storage-overview-cleanup]
   pull_request:
 
 jobs:
