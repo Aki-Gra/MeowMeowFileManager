@@ -1,59 +1,52 @@
 # MeowMeow File Manager 🐾
 
-A small, native Android file explorer built in **Kotlin + Jetpack Compose**.
+A native Android file explorer built in Kotlin and Jetpack Compose.
 
-## MVP features
+## Screens
 
-- Select a folder through Android's system folder picker (Storage Access Framework).
-- Browse the selected folder and nested directories; return with the back button.
-- Remember the selected folder across app restarts where Android retains access.
-- Open files in compatible installed applications.
-- Sort items by name, most recently modified, or largest first (directories stay first).
-- Create folders, rename entries and permanently delete entries when the document provider allows writing. Deletion requires confirmation.
-- Light and dark Material 3 UI, loading/empty/error states.
+- **Files:** Browse shared storage after explicit All files access approval, or use Android's folder picker as a scoped fallback. Browse Downloads directly, open files with other apps, sort, create folders, rename and delete after confirmation.
+- **Storage overview:** Shows used/available space for primary shared storage, a shortcut to Android's system storage settings, a Downloads shortcut and a link to Cleanup.
+- **Cleanup:** Scans Downloads for files **50 MiB or larger**, shows candidates with their sizes, and lets users select and confirm permanent deletion. Nothing is automatically deleted.
 
-**Storage privacy:** No `MANAGE_EXTERNAL_STORAGE`, `READ_EXTERNAL_STORAGE`, or internet permission. The app sees only the subtree explicitly granted by the user. Some folders (including system-managed locations) cannot be selected, and not every document provider supports editing.
+## Permissions and privacy
+
+On **Android 11+**, full file management uses Android's special **All files access** setting. MeowMeow shows a user-initiated route to the system permission screen.
+
+- **Choose a folder** via the Storage Access Framework works without All files access. Existing SAF browsing remains intact for users who decline permission.
+- Android still protects directories such as Android/data and Android/obb; root access is not granted.
+- The direct explorer currently covers **primary shared storage only**, not every SD card, USB drive or protected system directory.
+- The Cleanup tab **only scans Downloads**, never removes directories, and revalidates file size and modification time before a requested deletion.
+- Deletion is permanent. There is no recycle bin or automatic cleanup.
+- No network permission, cloud upload, analytics or background scanning.
+- Publishing to Google Play with MANAGE_EXTERNAL_STORAGE requires file-manager justification and a Play Console declaration. See [Android storage documentation](https://developer.android.com/training/data-storage/manage-all-files) and [Play policy](https://support.google.com/googleplay/android-developer/answer/10467955).
 
 ## Architecture
 
-```text
-app/src/main/java/com/meowmeow/filemanager/
-├── MainActivity.kt                 # Activity Result folder picker + file ACTION_VIEW
-├── model/FileEntry.kt              # Plain UI models and deterministic sorting
-├── data/DocumentRepository.kt      # Android SAF / DocumentFile and persistable URI grants
-├── ui/ExplorerViewModel.kt         # Navigation stack, async provider I/O, UI state
-├── ui/ExplorerScreen.kt            # Compose file list, menus, creation/rename/delete dialogs
-└── ui/theme/Theme.kt               # Light/dark app theme
-```
+- **MainActivity.kt:** top-level tabs, permission settings and FileProvider-based opening.
+- **model:** FileEntry, CleanupCandidate and sorting/threshold helpers.
+- **data/DocumentRepository.kt:** persisted Storage Access Framework tree access.
+- **data/LocalFileRepository.kt:** access-checked local shared-storage operations.
+- **ui/ExplorerViewModel.kt:** scoped explorer state.
+- **ui/DeviceExplorerViewModel.kt:** local explorer state.
+- **ui/CleanupViewModel.kt:** review, selection, and deletion state.
+- **ui/ExplorerScreen.kt / StorageScreens.kt:** Material 3 screens and dialogs.
 
-The ViewModel contains no document-provider queries on the main thread. The repository is responsible for scoped storage access. Provider `DocumentFile`s remain in the ViewModel/repository layer; UI receives immutable snapshots.
+Filesystem and provider work happens on Dispatchers.IO rather than the main thread.
 
-## Open and run
+## Build and run
 
-1. Install a modern **Android Studio**, JDK 17, and Android SDK Platform 37.0 (Android 17).
-2. Clone the repo and open its root folder in Android Studio.
-3. For initial Gradle wrapper setup, run `./gradlew --version` (macOS/Linux) or `gradlew.bat --version` (Windows). On first run, the launcher downloads **Gradle's official 9.5.0 wrapper JAR**, validates its [published SHA-256 checksum](https://gradle.org/release-checksums/), and downloads the specified Gradle distribution. This initial bootstrap requires internet access and `curl`/`wget` (or PowerShell on Windows). The binary JAR is deliberately not checked into this initial commit.
-4. Sync Gradle. Select the `app` configuration and Run on a device/emulator with Android 8.0 (API 26) or higher.
-5. Tap **Choose a folder**; approve a directory in Android's picker. Tap folders to navigate, files to open, and ⋮ to rename/delete writable entries.
+1. Install modern Android Studio, JDK 17 and Android SDK Platform 37.
+2. Check out this branch (it is stacked on the original file explorer branch).
+3. Run the command: ./gradlew :app:testDebugUnitTest :app:assembleDebug
+4. Install the debug APK from app/build/outputs/apk/debug/app-debug.apk.
+5. On Android 11+, use **Enable full file access** in Files or Storage to open Android settings, allow access, then return to MeowMeow. Explore device storage or go straight to Downloads.
+6. Open Storage for the usage summary, then Cleanup to scan, select and optionally delete large Downloads files.
 
-From the command line:
+The bundled lightweight Gradle launcher bootstraps a checksum-verified Gradle wrapper JAR on first use. GitHub Actions runs unit tests and assembles a debug APK for pull requests; check its result before merging.
 
-```bash
-./gradlew :app:testDebugUnitTest :app:assembleDebug
-```
+## MVP limitations
 
-## Limitations and next steps
-
-- This is a **scoped** explorer, not an all-storage/root file manager; Android enforces the folder chooser's limits.
-- The OS decides which apps can open each file. Built-in image/PDF/video previews, thumbnails, search, copy/move, and multi-select are not yet implemented.
-- Files and folders may be read-only or have incomplete timestamps/sizes depending on provider.
-- If access to a saved folder is revoked externally, select it again.
-- Delete is permanent; no trash or undo yet.
-
-## Validation
-
-`FileEntryTest` covers folder-first sorting, size/date sorting, and filename rules. GitHub Actions is configured to run JVM tests and assemble a debug APK on pushes and PRs. Build and device validation are required before merging.
-
-## Licensing
-
-No license chosen yet.
+- Cleanup is a large-downloads reviewer, **not** duplicate detection, app-cache cleaning or a claim that any file is unnecessary.
+- Direct storage deletion currently removes files and **empty** folders only.
+- Search, copy/move, multi-selection in Explorer, thumbnails and recycling bin are not yet implemented.
+- Device testing is required beyond CI, especially for permission revocation, opening local files and permanent deletion.

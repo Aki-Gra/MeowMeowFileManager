@@ -51,8 +51,10 @@ class LocalFileRepository {
     fun listChildren(folder: File): List<FileEntry> {
         val parent = checked(folder)
         check(parent.isDirectory && parent.canRead()) { "Folder is not readable." }
-        return (parent.listFiles() ?: error("Folder contents are unavailable.")).map { child ->
-            val safeChild = checked(child)
+        return (parent.listFiles() ?: error("Folder contents are unavailable.")).mapNotNull { child ->
+            // Skip system-protected items, symlinks and entries that became unavailable.
+            val safeChild = runCatching { checked(child) }.getOrNull() ?: return@mapNotNull null
+            if (child.absoluteFile != safeChild) return@mapNotNull null
             FileEntry(
                 id = Uri.fromFile(safeChild).toString(),
                 name = child.name,
