@@ -27,7 +27,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.core.content.FileProvider
@@ -92,6 +92,7 @@ class MainActivity : ComponentActivity() {
             }
             LaunchedEffect(page, allFilesGranted) {
                 if (page == Page.CLEANUP && allFilesGranted) cleanup.scan()
+                if (page == Page.FILES && allFilesGranted && usingDevice) device.refresh()
             }
 
             val browseDevice = {
@@ -186,10 +187,7 @@ class MainActivity : ComponentActivity() {
                                 onGrantAccess = ::requestAllFilesAccess,
                                 onScan = cleanup::scan,
                                 onToggle = cleanup::toggleSelected,
-                                onDelete = {
-                                    cleanup.deleteSelected()
-                                    if (usingDevice) device.refresh()
-                                },
+                                onDelete = cleanup::deleteSelected,
                                 onDismissMessage = cleanup::clearMessage
                             )
                         }

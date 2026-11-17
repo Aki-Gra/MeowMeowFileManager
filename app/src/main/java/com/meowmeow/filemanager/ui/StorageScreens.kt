@@ -154,7 +154,7 @@ fun CleanupScreen(
         Column(Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("Large files in Downloads", style = MaterialTheme.typography.titleMedium)
-            Text("Review downloads of 50 MB or more. Nothing is removed automatically. " +
+            Text("Review downloads of 50 MiB or more. Nothing is removed automatically. " +
                 "Deleting selected files is permanent and cannot be undone.",
                 style = MaterialTheme.typography.bodyMedium)
             if (!hasFullAccess) {
