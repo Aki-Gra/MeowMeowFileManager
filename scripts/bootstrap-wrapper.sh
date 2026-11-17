@@ -4,7 +4,7 @@ set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 DEST="$ROOT/gradle/wrapper/gradle-wrapper.jar"
 EXPECTED="497c8c2a7e5031f6aa847f88104aa80a93532ec32ee17bdb8d1d2f67a194a9c7"
-URL="https://services.gradle.org/distributions/gradle-9.5.0-wrapper.jar"
+URL="https://raw.githubusercontent.com/gradle/gradle/v9.5.0/gradle/wrapper/gradle-wrapper.jar"
 
 check_hash() {
     if command -v sha256sum >/dev/null 2>&1; then
