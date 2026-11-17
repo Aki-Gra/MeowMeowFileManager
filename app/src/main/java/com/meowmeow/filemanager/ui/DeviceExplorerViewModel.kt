@@ -74,7 +74,7 @@ class DeviceExplorerViewModel(private val repository: LocalFileRepository) : Vie
 
     private fun mutate(block: () -> Unit) {
         viewModelScope.launch {
-            val result = runCatching { withContext(Dispatchers.IO) { block() } }
+            val result = resultUnlessCancelled { withContext(Dispatchers.IO) { block() } }
             if (result.isSuccess) loadFolder()
             else _state.value = _state.value.copy(
                 errorMessage = result.exceptionOrNull()?.message ?: "Operation failed."
@@ -100,7 +100,7 @@ class DeviceExplorerViewModel(private val repository: LocalFileRepository) : Vie
                 isLoading = true,
                 errorMessage = null
             )
-            val result = runCatching {
+            val result = resultUnlessCancelled {
                 withContext(Dispatchers.IO) {
                     repository.listChildren(folder) to repository.canCreateFolder(folder)
                 }

@@ -40,7 +40,7 @@ class ExplorerViewModel(private val repository: DocumentRepository) : ViewModel(
 
     init {
         selectionJob = viewModelScope.launch {
-            val result = runCatching { withContext(Dispatchers.IO) { repository.restoreRoot() } }
+            val result = resultUnlessCancelled { withContext(Dispatchers.IO) { repository.restoreRoot() } }
             val root = result.getOrNull()
             if (root == null) {
                 _state.value = _state.value.copy(
@@ -58,7 +58,7 @@ class ExplorerViewModel(private val repository: DocumentRepository) : ViewModel(
         scanJob?.cancel()
         selectionJob = viewModelScope.launch {
             _state.value = _state.value.copy(isLoading = true, errorMessage = null)
-            val result = runCatching {
+            val result = resultUnlessCancelled {
                 withContext(Dispatchers.IO) { repository.chooseRoot(uri) }
             }
             result.onSuccess(::enterRoot)
@@ -111,7 +111,7 @@ class ExplorerViewModel(private val repository: DocumentRepository) : ViewModel(
 
     private fun mutate(block: () -> Unit) {
         viewModelScope.launch {
-            val result = runCatching { withContext(Dispatchers.IO) { block() } }
+            val result = resultUnlessCancelled { withContext(Dispatchers.IO) { block() } }
             if (result.isSuccess) loadFolder()
             else _state.value = _state.value.copy(errorMessage = friendlyError(result.exceptionOrNull()!!))
         }
@@ -132,7 +132,7 @@ class ExplorerViewModel(private val repository: DocumentRepository) : ViewModel(
                 isLoading = true,
                 errorMessage = null
             )
-            val result = runCatching {
+            val result = resultUnlessCancelled {
                 withContext(Dispatchers.IO) {
                     val files = repository.listChildren(folder)
                     files to folder.canWrite()

@@ -38,7 +38,7 @@ class CleanupViewModel(private val repository: LocalFileRepository) : ViewModel(
         task?.cancel()
         task = viewModelScope.launch {
             _state.value = CleanupUiState(isLoading = true)
-            val result = runCatching {
+            val result = resultUnlessCancelled {
                 withContext(Dispatchers.IO) { repository.scanLargeDownloads() }
             }
             result.onSuccess { (candidates, truncated) ->
@@ -71,13 +71,18 @@ class CleanupViewModel(private val repository: LocalFileRepository) : ViewModel(
                 val failureMessages = mutableListOf<String>()
                 var deleted = 0
                 items.forEach {
-                    runCatching { repository.deleteDownload(it) }
-                        .onSuccess { deleted++ }
-                        .onFailure { error -> failureMessages.add(error.message ?: "Could not delete file.") }
+                    try {
+                        repository.deleteDownload(it)
+                        deleted++
+                    } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                        throw cancelled
+                    } catch (error: Exception) {
+                        failureMessages.add(error.message ?: "Could not delete file.")
+                    }
                 }
                 deleted to failureMessages
             }
-            val result = runCatching {
+            val result = resultUnlessCancelled {
                 withContext(Dispatchers.IO) { repository.scanLargeDownloads() }
             }
             result.onSuccess { (remaining, truncated) ->

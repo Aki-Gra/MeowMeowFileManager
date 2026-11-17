@@ -92,7 +92,6 @@ class MainActivity : ComponentActivity() {
             }
             LaunchedEffect(page, allFilesGranted) {
                 if (page == Page.CLEANUP && allFilesGranted) cleanup.scan()
-                if (page == Page.FILES && allFilesGranted && usingDevice) device.refresh()
             }
 
             val browseDevice = {
@@ -116,7 +115,10 @@ class MainActivity : ComponentActivity() {
                         NavigationBar {
                             NavigationBarItem(
                                 selected = page == Page.FILES,
-                                onClick = { page = Page.FILES },
+                                onClick = {
+                                    if (page != Page.FILES && usingDevice && allFilesGranted) device.refresh()
+                                    page = Page.FILES
+                                },
                                 icon = { Icon(Icons.Default.Folder, contentDescription = null) },
                                 label = { Text("Files") }
                             )
