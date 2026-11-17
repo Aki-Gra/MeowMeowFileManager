@@ -30,7 +30,7 @@ The ViewModel contains no document-provider queries on the main thread. The repo
 
 ## Open and run
 
-1. Install a modern **Android Studio**, JDK 17, and Android SDK Platform 37.
+1. Install a modern **Android Studio**, JDK 17, and Android SDK Platform 37.0 (Android 17).
 2. Clone the repo and open its root folder in Android Studio.
 3. For initial Gradle wrapper setup, run `./gradlew --version` (macOS/Linux) or `gradlew.bat --version` (Windows). On first run, the launcher downloads **Gradle's official 9.5.0 wrapper JAR**, validates its [published SHA-256 checksum](https://gradle.org/release-checksums/), and downloads the specified Gradle distribution. This initial bootstrap requires internet access and `curl`/`wget` (or PowerShell on Windows). The binary JAR is deliberately not checked into this initial commit.
 4. Sync Gradle. Select the `app` configuration and Run on a device/emulator with Android 8.0 (API 26) or higher.
