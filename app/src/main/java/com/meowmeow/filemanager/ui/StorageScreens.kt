@@ -1,7 +1,11 @@
 package com.meowmeow.filemanager.ui
 
+import android.app.usage.StorageStatsManager
+import android.content.Context
 import android.os.Environment
 import android.os.StatFs
+import android.os.storage.StorageManager
+import android.text.format.Formatter
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -46,15 +50,46 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.meowmeow.filemanager.model.humanSize
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-private data class SpaceInfo(val totalBytes: Long, val availableBytes: Long) {
+private data class SpaceInfo(
+    val totalBytes: Long,
+    val availableBytes: Long,
+    val filesystemFallback: Boolean
+) {
     val usedBytes: Long get() = (totalBytes - availableBytes).coerceAtLeast(0L)
     val usedRatio: Float get() =
         if (totalBytes <= 0) 0f else (usedBytes.toDouble() / totalBytes).toFloat().coerceIn(0f, 1f)
+}
+
+/**
+ * User-facing device capacity, not a measure of files accessible to MeowMeow.
+ *
+ * StorageStatsManager values are intended for visual display: total reflects the
+ * advertised primary internal storage size, while free includes reclaimable
+ * caches. StatFs only measures the shared-storage filesystem and can therefore
+ * under-report both values relative to Android Settings.
+ */
+private fun readSpaceInfo(context: Context): SpaceInfo {
+    val deviceStats = runCatching {
+        val manager = requireNotNull(context.getSystemService(StorageStatsManager::class.java))
+        val uuid = StorageManager.UUID_DEFAULT
+        val total = manager.getTotalBytes(uuid)
+        val free = manager.getFreeBytes(uuid)
+        check(total > 0L && free >= 0L) { "Invalid device storage stats." }
+        SpaceInfo(total, free.coerceAtMost(total), filesystemFallback = false)
+    }.getOrNull()
+    if (deviceStats != null) return deviceStats
+
+    // Explain fallback scope in the UI rather than calling these device totals.
+    val filesystem = StatFs(Environment.getExternalStorageDirectory().path)
+    val total = filesystem.totalBytes
+    val free = filesystem.availableBytes.coerceIn(0L, total.coerceAtLeast(0L))
+    return SpaceInfo(total, free, filesystemFallback = true)
 }
 
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
@@ -67,13 +102,11 @@ fun StorageOverviewScreen(
     onOpenCleanup: () -> Unit,
     onOpenSystemStorage: () -> Unit
 ) {
+    val context = LocalContext.current.applicationContext
     var refresh by remember { mutableIntStateOf(0) }
     val stats by produceState<SpaceInfo?>(initialValue = null, key1 = refresh) {
         value = withContext(Dispatchers.IO) {
-            runCatching {
-                val stat = StatFs(Environment.getExternalStorageDirectory().path)
-                SpaceInfo(stat.totalBytes, stat.availableBytes)
-            }.getOrNull()
+            runCatching { readSpaceInfo(context) }.getOrNull()
         }
     }
     Scaffold(topBar = { TopAppBar(title = { Text("Storage overview") }) }) { padding ->
@@ -85,22 +118,38 @@ fun StorageOverviewScreen(
                 Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Icon(Icons.Default.Storage, contentDescription = null,
                         tint = MaterialTheme.colorScheme.primary)
-                    Text("Shared device storage", style = MaterialTheme.typography.titleLarge)
+                    Text(
+                        if (stats?.filesystemFallback == true) "Shared storage filesystem"
+                        else "Internal device storage",
+                        style = MaterialTheme.typography.titleLarge
+                    )
                     if (stats == null) {
                         Text("Storage information unavailable.", style = MaterialTheme.typography.bodyMedium)
                     } else {
                         val info = requireNotNull(stats)
-                        Text(humanSize(info.usedBytes) + " used of " + humanSize(info.totalBytes))
+                        Text(
+                            Formatter.formatFileSize(context, info.usedBytes) + " used of " +
+                                Formatter.formatFileSize(context, info.totalBytes)
+                        )
                         LinearProgressIndicator(
                             progress = { info.usedRatio },
                             modifier = Modifier.fillMaxWidth()
                         )
-                        Text(humanSize(info.availableBytes) + " available",
-                            style = MaterialTheme.typography.bodyMedium)
+                        Text(
+                            Formatter.formatFileSize(context, info.availableBytes) + " free",
+                            style = MaterialTheme.typography.bodyMedium
+                        )
                     }
-                    Text("Totals include storage managed by other apps and the system. " +
-                        "MeowMeow does not claim those files are safe to remove.",
-                        style = MaterialTheme.typography.bodySmall)
+                    Text(
+                        if (stats?.filesystemFallback == true)
+                            "Filesystem-only figures (fallback). They may differ from Android Settings " +
+                                "because they exclude system-reserved capacity and reclaimable cache."
+                        else
+                            "Device totals include system and other app data; free space includes " +
+                                "cache Android may reclaim. These figures do not indicate what " +
+                                "MeowMeow can safely delete.",
+                        style = MaterialTheme.typography.bodySmall
+                    )
                     TextButton(onClick = { refresh++ }) { Text("Refresh space") }
                 }
             }
