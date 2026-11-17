@@ -2,7 +2,7 @@ $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $dest = Join-Path $root 'gradle\wrapper\gradle-wrapper.jar'
 $expected = '497c8c2a7e5031f6aa847f88104aa80a93532ec32ee17bdb8d1d2f67a194a9c7'
-$url = 'https://services.gradle.org/distributions/gradle-9.5.0-wrapper.jar'
+$url = 'https://raw.githubusercontent.com/gradle/gradle/v9.5.0/gradle/wrapper/gradle-wrapper.jar'
 if (-not (Test-Path $dest)) {
     $tempFile = "$dest.tmp"
     try {
