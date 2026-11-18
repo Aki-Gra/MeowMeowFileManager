@@ -22,6 +22,13 @@ class ErrorLogStoreTest {
         assertEquals("Storage I/O error", errorCategory(IOException("Sensitive filename")))
     }
 
+    @Test fun testEntryIsExplicitlyMarked() {
+        val report = formatErrorLog(listOf(
+            ErrorEntry(1000L, ErrorArea.DIAGNOSTICS_TEST, "Test entry", false)
+        ))
+        assertTrue(report.contains("TEST | DIAGNOSTICS TEST | Test entry"))
+    }
+
     @Test fun emptyLogExplainsItsState() {
         assertTrue(formatErrorLog(emptyList()).contains("No errors recorded."))
     }

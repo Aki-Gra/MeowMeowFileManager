@@ -12,7 +12,7 @@ import java.util.Date
 enum class ErrorArea {
     SCOPED_FOLDER_PICKER, SCOPED_BROWSING, SCOPED_FILE_OPERATION,
     DEVICE_BROWSING, DEVICE_FILE_OPERATION, CLEANUP_SCAN, CLEANUP_DELETE,
-    STORAGE_OVERVIEW, EXTERNAL_FILE_OPEN, APP_CRASH
+    STORAGE_OVERVIEW, EXTERNAL_FILE_OPEN, APP_CRASH, DIAGNOSTICS_TEST
 }
 data class ErrorEntry(
     val timestampMillis: Long,
@@ -37,7 +37,7 @@ fun formatErrorLog(events: List<ErrorEntry>): String = buildString {
     events.asReversed().forEach { item ->
         append(DateFormat.getDateTimeInstance().format(Date(item.timestampMillis)))
         append(" | ")
-        append(if (item.fatal) "CRASH" else "ERROR")
+        append(if (item.area == ErrorArea.DIAGNOSTICS_TEST) "TEST" else if (item.fatal) "CRASH" else "ERROR")
         append(" | ")
         append(item.area.name.replace('_', ' '))
         append(" | ")
@@ -60,12 +60,20 @@ class ErrorLogStore(context: Context) {
 
     @Synchronized fun record(area: ErrorArea, error: Throwable, fatal: Boolean = false) {
         if (!_enabled.value) return
-        val next = (_entries.value + ErrorEntry(
-            System.currentTimeMillis(), area, errorCategory(error), fatal
-        )).takeLast(100)
+        addEntry(ErrorEntry(System.currentTimeMillis(), area, errorCategory(error), fatal), fatal)
+    }
+
+    @Synchronized fun recordTest() {
+        if (_enabled.value) {
+            addEntry(ErrorEntry(System.currentTimeMillis(), ErrorArea.DIAGNOSTICS_TEST, "Test entry", false), false)
+        }
+    }
+
+    private fun addEntry(event: ErrorEntry, synchronous: Boolean) {
+        val next = (_entries.value + event).takeLast(100)
         _entries.value = next
         val edit = prefs.edit().putString("entries", encode(next))
-        if (fatal) edit.commit() else edit.apply()
+        if (synchronous) edit.commit() else edit.apply()
     }
 
     @Synchronized fun clear() {
@@ -94,7 +102,7 @@ class ErrorLogStore(context: Context) {
                 val area = ErrorArea.entries.firstOrNull { it.name == item.optString("area") } ?: continue
                 val category = item.optString("type")
                 if (category !in setOf("Permission denied", "Storage I/O error",
-                        "Invalid operation", "Operation unavailable", "Unexpected failure")) continue
+                        "Invalid operation", "Operation unavailable", "Unexpected failure", "Test entry")) continue
                 list += ErrorEntry(item.optLong("time"), area, category, item.optBoolean("fatal"))
             }
             list.takeLast(100)

@@ -50,3 +50,18 @@ The bundled lightweight Gradle launcher bootstraps a checksum-verified Gradle wr
 - Direct storage deletion currently removes files and **empty** folders only.
 - Search, copy/move, multi-selection in Explorer, thumbnails and recycling bin are not yet implemented.
 - Device testing is required beyond CI, especially for permission revocation, opening local files and permanent deletion.
+
+## Settings & local error diagnostics
+
+The **Settings** tab includes private, persistent error logging. Logs are enabled by default and limited to the 100 most recent entries. Each entry includes time, a fixed operation category and a broad failure category; raw exception messages, stack traces, filenames and file paths are intentionally excluded. The app records handled browsing/file-operation/cleanup errors and uncaught crashes (without swallowing the crash). Nothing is uploaded automatically.
+
+Settings allows disabling future logging, creating a harmless **test log entry**, reviewing entries, **Copy**, **Share** (opens Android's share chooser only when tapped), and **Clear** after confirmation. Turning logging off does not delete existing entries; Clear removes stored history. All logs are stored in app-private preferences and are removed on uninstall. App backup is disabled.
+
+### QA: Settings
+
+- Open Settings and confirm the Error logging switch starts enabled and no old logs are unexpectedly present after fresh installation.
+- Tap **Add test log entry**: a clearly marked Test entry appears with timestamp. Force-stop/reopen the app and verify it persists.
+- Turn logging off and attempt another test event: no new entry appears. Turn it back on and retry.
+- Tap Copy and paste into a temporary note, then tap Share and verify the Android share chooser appears (cancel without sending). Confirm that the exported text contains no private names or paths.
+- Tap Clear and cancel (entries remain), then confirm Clear (history becomes empty). Reopen the app; history stays empty.
+- Repeat in dark mode / small-screen portrait. Avoid deliberately crashing the device for testing.

@@ -42,6 +42,7 @@ fun SettingsScreen(
     loggingEnabled: Boolean,
     events: List<ErrorEntry>,
     onSetLoggingEnabled: (Boolean) -> Unit,
+    onRecordTest: () -> Unit,
     onClear: () -> Unit
 ) {
     val context = LocalContext.current
@@ -78,8 +79,11 @@ fun SettingsScreen(
                             "Nothing is uploaded automatically.",
                         style = MaterialTheme.typography.bodySmall
                     )
-                    Text("Last " + events.size + " of up to 100 errors",
+                    Text("Last " + events.size + " of up to 100 entries",
                         style = MaterialTheme.typography.labelLarge)
+                    OutlinedButton(enabled = loggingEnabled, onClick = onRecordTest) {
+                        Text("Add test log entry")
+                    }
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedButton(enabled = events.isNotEmpty(), onClick = {
                             val clip = context.getSystemService(Context.CLIPBOARD_SERVICE)
@@ -114,7 +118,8 @@ fun SettingsScreen(
                         Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp),
                         verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        Text(if (event.fatal) "Crash" else "Error",
+                        Text(if (event.area == com.meowmeow.filemanager.diagnostics.ErrorArea.DIAGNOSTICS_TEST)
+                            "Test" else if (event.fatal) "Crash" else "Error",
                             color = MaterialTheme.colorScheme.error,
                             style = MaterialTheme.typography.labelMedium)
                         Text(event.area.name.replace('_', ' '),

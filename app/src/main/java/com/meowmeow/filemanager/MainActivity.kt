@@ -198,6 +198,7 @@ class MainActivity : ComponentActivity() {
                                 loggingEnabled = errorLoggingEnabled,
                                 events = savedErrors,
                                 onSetLoggingEnabled = errorLog::setEnabled,
+                                onRecordTest = errorLog::recordTest,
                                 onClear = errorLog::clear
                             )
                             Page.CLEANUP -> CleanupScreen(
