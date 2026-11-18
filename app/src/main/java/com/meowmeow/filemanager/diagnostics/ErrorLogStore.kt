@@ -17,12 +17,52 @@ enum class ErrorArea {
     STORAGE_OVERVIEW, EXTERNAL_FILE_OPEN, APP_CRASH, DIAGNOSTICS_TEST,
     LOG_EXPORT
 }
+/**
+ * Stable, non-sensitive action identifiers. Do not reuse or rename shipped codes:
+ * testers can search for them in future versions and in exported .txt logs.
+ */
+enum class ErrorOperation(val code: String, val title: String) {
+    UNKNOWN("OLD", "Unspecified (older entry)"),
+    SAF_RESTORE("SAF-RST", "Restore chosen folder"),
+    SAF_PICK("SAF-PICK", "Choose folder"),
+    SAF_LIST("SAF-LIST", "List chosen folder"),
+    SAF_CREATE("SAF-MKDIR", "Create folder (SAF)"),
+    SAF_RENAME("SAF-REN", "Rename item (SAF)"),
+    SAF_DELETE("SAF-DEL", "Delete item (SAF)"),
+    FS_OPEN_FOLDER("FS-OPEN", "Open folder"),
+    FS_LIST("FS-LIST", "List device folder"),
+    FS_CREATE("FS-MKDIR", "Create device folder"),
+    FS_RENAME("FS-REN", "Rename device item"),
+    FS_DELETE("FS-DEL", "Delete device item"),
+    CLEANUP_SCAN("CLN-SCAN", "Scan large downloads"),
+    CLEANUP_DELETE("CLN-DEL", "Delete selected download"),
+    STORAGE_READ("STO-READ", "Read storage information"),
+    EXTERNAL_OPEN("VIEW-OPEN", "Open in another app"),
+    LOG_EXPORT("LOG-EXPORT", "Export error log"),
+    APP_CRASH("APP-CRASH", "Unhandled app crash"),
+    DIAGNOSTICS_TEST("LOG-TEST", "Test log")
+}
+
 data class ErrorEntry(
     val timestampMillis: Long,
     val area: ErrorArea,
     val category: String,
-    val fatal: Boolean
+    val fatal: Boolean,
+    val operation: ErrorOperation = ErrorOperation.UNKNOWN
 )
+
+/** Fixed codes combine the action with a safe broad reason, never exception details. */
+fun errorCode(entry: ErrorEntry): String {
+    val reason = when (entry.category) {
+        "Permission denied" -> "01"
+        "Storage I/O error" -> "02"
+        "Invalid operation" -> "03"
+        "Operation unavailable" -> "04"
+        "Test entry" -> "00"
+        else -> "99"
+    }
+    return "MM-" + entry.operation.code + "-" + reason
+}
 
 /** Never capture raw exception messages or stack traces: they can contain private paths. */
 fun errorCategory(error: Throwable): String = when (error) {
@@ -43,6 +83,10 @@ fun formatErrorLog(events: List<ErrorEntry>): String = buildString {
         append(if (item.area == ErrorArea.DIAGNOSTICS_TEST) "TEST" else if (item.fatal) "CRASH" else "ERROR")
         append(" | ")
         append(item.area.name.replace('_', ' '))
+        append(" | ")
+        append(errorCode(item))
+        append(" | ")
+        append(item.operation.title)
         append(" | ")
         appendLine(item.category)
     }
@@ -66,14 +110,19 @@ class ErrorLogStore(context: Context) {
         _enabled.value = value
     }
 
-    @Synchronized fun record(area: ErrorArea, error: Throwable, fatal: Boolean = false) {
+    @Synchronized fun record(
+        area: ErrorArea,
+        error: Throwable,
+        fatal: Boolean = false,
+        operation: ErrorOperation = ErrorOperation.UNKNOWN
+    ) {
         if (!_enabled.value) return
-        addEntry(ErrorEntry(System.currentTimeMillis(), area, errorCategory(error), fatal), fatal)
+        addEntry(ErrorEntry(System.currentTimeMillis(), area, errorCategory(error), fatal, operation), fatal)
     }
 
     @Synchronized fun recordTest() {
         if (_enabled.value) {
-            addEntry(ErrorEntry(System.currentTimeMillis(), ErrorArea.DIAGNOSTICS_TEST, "Test entry", false), false)
+            addEntry(ErrorEntry(System.currentTimeMillis(), ErrorArea.DIAGNOSTICS_TEST, "Test entry", false, ErrorOperation.DIAGNOSTICS_TEST), false)
         }
     }
 
@@ -96,6 +145,7 @@ class ErrorLogStore(context: Context) {
                 put("area", it.area.name)
                 put("type", it.category)
                 put("fatal", it.fatal)
+                put("operation", it.operation.name)
             })
         }
     }.toString()
@@ -111,7 +161,12 @@ class ErrorLogStore(context: Context) {
                 val category = item.optString("type")
                 if (category !in setOf("Permission denied", "Storage I/O error",
                         "Invalid operation", "Operation unavailable", "Unexpected failure", "Test entry")) continue
-                list += ErrorEntry(item.optLong("time"), area, category, item.optBoolean("fatal"))
+                // Older saved entries do not have an operation field: keep them,
+                // but clearly mark their source as unknown rather than guessing.
+                val op = ErrorOperation.entries.firstOrNull {
+                    it.name == item.optString("operation")
+                } ?: ErrorOperation.UNKNOWN
+                list += ErrorEntry(item.optLong("time"), area, category, item.optBoolean("fatal"), op)
             }
             list.takeLast(100)
         } catch (_: Exception) { emptyList() }

@@ -26,3 +26,10 @@
 - **Navigation cancellation:** Previously surfaced `StandaloneCoroutine was cancelled`; normal coroutine cancellation is now propagated instead of surfaced as a user error. Final smoke recheck above remains.
 - **Storage discrepancy:** Previously ~20 GB less total and ~6 GB less free than Android Settings. Changed the display to `StorageStatsManager` with a labelled filesystem fallback. The tester subsequently reported the updated app working; exact comparison figures were not recorded.
 - **Diagnostics:** Logs are local, private, bounded to 100 entries, and omit raw error messages, paths and stack traces. Export is user-initiated through Android's document-save picker. Settings/export require the final test above.
+
+## Diagnostic error-code verification
+
+- [ ] With the new build, check **Settings → Error logging**: new errors and test entries have a stable `MM-...` code and action label, both on screen and in Copy/Export `.txt`.
+- [ ] Reopen the app and verify older saved entries stay visible, with code `MM-OLD-xx` and **Unspecified (older entry)** rather than an invented operation.
+- [ ] Using *disposable* files only, attempt a rename to an existing name. Verify a `MM-FS-REN-04` or `MM-SAF-REN-04` code is produced for the failed rename, instead of generic Device File Operation alone.
+- [ ] Confirm no private filenames, paths, exception messages, file contents or stack traces are recorded.

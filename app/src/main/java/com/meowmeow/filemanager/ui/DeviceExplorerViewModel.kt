@@ -6,6 +6,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.meowmeow.filemanager.MeowMeowApp
 import com.meowmeow.filemanager.diagnostics.ErrorArea
+import com.meowmeow.filemanager.diagnostics.ErrorOperation
 import com.meowmeow.filemanager.diagnostics.ErrorLogStore
 import com.meowmeow.filemanager.data.LocalFileRepository
 import com.meowmeow.filemanager.model.FileEntry
@@ -50,7 +51,7 @@ class DeviceExplorerViewModel(
     fun openDirectory(entry: FileEntry) {
         if (!entry.isDirectory) return
         val target = runCatching { repository.fromEntry(entry) }
-            .onFailure { errorLog.record(ErrorArea.DEVICE_BROWSING, it) }
+            .onFailure { errorLog.record(ErrorArea.DEVICE_BROWSING, it, operation = ErrorOperation.FS_OPEN_FOLDER) }
             .getOrNull() ?: return
         if (target.parentFile != folders.lastOrNull() || !target.isDirectory) return
         folders.add(target)
@@ -74,19 +75,23 @@ class DeviceExplorerViewModel(
         )
     }
 
-    fun createFolder(name: String) = mutate { repository.createFolder(current(), name) }
-    fun rename(entry: FileEntry, newName: String) = mutate {
+    fun createFolder(name: String) = mutate(ErrorOperation.FS_CREATE) {
+        repository.createFolder(current(), name)
+    }
+    fun rename(entry: FileEntry, newName: String) = mutate(ErrorOperation.FS_RENAME) {
         repository.rename(repository.fromEntry(entry), newName)
     }
-    fun delete(entry: FileEntry) = mutate { repository.delete(repository.fromEntry(entry)) }
+    fun delete(entry: FileEntry) = mutate(ErrorOperation.FS_DELETE) {
+        repository.delete(repository.fromEntry(entry))
+    }
 
-    private fun mutate(block: () -> Unit) {
+    private fun mutate(operation: ErrorOperation, block: () -> Unit) {
         viewModelScope.launch {
             val result = resultUnlessCancelled { withContext(Dispatchers.IO) { block() } }
             if (result.isSuccess) loadFolder()
             else {
                 val failure = result.exceptionOrNull()!!
-                errorLog.record(ErrorArea.DEVICE_FILE_OPERATION, failure)
+                errorLog.record(ErrorArea.DEVICE_FILE_OPERATION, failure, operation = operation)
                 _state.value = _state.value.copy(
                     errorMessage = failure.message ?: "Operation failed."
                 )
@@ -124,7 +129,7 @@ class DeviceExplorerViewModel(
                     isLoading = false
                 )
             }.onFailure {
-                errorLog.record(ErrorArea.DEVICE_BROWSING, it)
+                errorLog.record(ErrorArea.DEVICE_BROWSING, it, operation = ErrorOperation.FS_LIST)
                 _state.value = _state.value.copy(
                     isLoading = false,
                     errorMessage = it.message ?: "Could not open this folder."

@@ -32,6 +32,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.meowmeow.filemanager.diagnostics.ErrorEntry
+import com.meowmeow.filemanager.diagnostics.errorCode
 import com.meowmeow.filemanager.diagnostics.formatErrorLog
 import java.text.DateFormat
 import java.util.Date
@@ -135,6 +136,8 @@ fun SettingsScreen(
                             style = MaterialTheme.typography.labelMedium)
                         Text(event.area.name.replace('_', ' '),
                             style = MaterialTheme.typography.titleSmall)
+                        Text(errorCode(event), style = MaterialTheme.typography.titleSmall)
+                        Text(event.operation.title, style = MaterialTheme.typography.bodyMedium)
                         Text(event.category, style = MaterialTheme.typography.bodyMedium)
                         Text(DateFormat.getDateTimeInstance().format(Date(event.timestampMillis)),
                             style = MaterialTheme.typography.bodySmall)

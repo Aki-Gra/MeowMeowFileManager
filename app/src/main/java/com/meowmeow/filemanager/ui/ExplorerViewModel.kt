@@ -8,6 +8,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.meowmeow.filemanager.MeowMeowApp
 import com.meowmeow.filemanager.diagnostics.ErrorArea
+import com.meowmeow.filemanager.diagnostics.ErrorOperation
 import com.meowmeow.filemanager.diagnostics.ErrorLogStore
 import com.meowmeow.filemanager.data.DocumentRepository
 import com.meowmeow.filemanager.model.FileEntry
@@ -49,7 +50,7 @@ class ExplorerViewModel(
             val result = resultUnlessCancelled { withContext(Dispatchers.IO) { repository.restoreRoot() } }
             val root = result.getOrNull()
             if (root == null) {
-                result.exceptionOrNull()?.let { errorLog.record(ErrorArea.SCOPED_BROWSING, it) }
+                result.exceptionOrNull()?.let { errorLog.record(ErrorArea.SCOPED_BROWSING, it, operation = ErrorOperation.SAF_RESTORE) }
                 _state.value = _state.value.copy(
                     isLoading = false,
                     errorMessage = result.exceptionOrNull()?.let { friendlyError(it) }
@@ -70,7 +71,7 @@ class ExplorerViewModel(
             }
             result.onSuccess(::enterRoot)
                 .onFailure {
-                    errorLog.record(ErrorArea.SCOPED_FOLDER_PICKER, it)
+                    errorLog.record(ErrorArea.SCOPED_FOLDER_PICKER, it, operation = ErrorOperation.SAF_PICK)
                     _state.value = _state.value.copy(isLoading = false, errorMessage = friendlyError(it))
                 }
         }
@@ -105,25 +106,25 @@ class ExplorerViewModel(
         )
     }
 
-    fun createFolder(name: String) = mutate {
+    fun createFolder(name: String) = mutate(ErrorOperation.SAF_CREATE) {
         repository.createFolder(currentFolder() ?: error("No folder selected"), name)
     }
 
-    fun rename(entry: FileEntry, newName: String) = mutate {
+    fun rename(entry: FileEntry, newName: String) = mutate(ErrorOperation.SAF_RENAME) {
         repository.rename(children[entry.id] ?: error("File is no longer available"), newName)
     }
 
-    fun delete(entry: FileEntry) = mutate {
+    fun delete(entry: FileEntry) = mutate(ErrorOperation.SAF_DELETE) {
         repository.delete(children[entry.id] ?: error("File is no longer available"))
     }
 
-    private fun mutate(block: () -> Unit) {
+    private fun mutate(operation: ErrorOperation, block: () -> Unit) {
         viewModelScope.launch {
             val result = resultUnlessCancelled { withContext(Dispatchers.IO) { block() } }
             if (result.isSuccess) loadFolder()
             else {
                 val failure = result.exceptionOrNull()!!
-                errorLog.record(ErrorArea.SCOPED_FILE_OPERATION, failure)
+                errorLog.record(ErrorArea.SCOPED_FILE_OPERATION, failure, operation = operation)
                 _state.value = _state.value.copy(errorMessage = friendlyError(failure))
             }
         }
@@ -158,7 +159,7 @@ class ExplorerViewModel(
                     isLoading = false
                 )
             }.onFailure {
-                errorLog.record(ErrorArea.SCOPED_BROWSING, it)
+                errorLog.record(ErrorArea.SCOPED_BROWSING, it, operation = ErrorOperation.SAF_LIST)
                 children = emptyMap()
                 _state.value = _state.value.copy(isLoading = false, errorMessage = friendlyError(it))
             }

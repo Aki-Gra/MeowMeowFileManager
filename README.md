@@ -75,3 +75,7 @@ Open **Settings → Error logging → Export logs to .txt**. The Android system 
 ## Before the final device test
 
 Follow the focused checklist in [`docs/FINAL_QA.md`](docs/FINAL_QA.md). Prior Files, Storage and Cleanup flows were reported as passing on a real device; the Settings / error log export still needs a final pass. Use only disposable files for any deletion checks.
+
+### Stable diagnostics codes
+
+Starting with the error-code update, each new entry includes a searchable, fixed `MM-<action>-<reason>` code and operation label. Examples: `MM-FS-REN-04` = direct-storage rename failed with an unavailable-operation condition; `MM-FS-MKDIR-04` = create-directory operation unavailable; `MM-SAF-DEL-01` = scoped-folder deletion denied. Reason suffixes: `01` permission, `02` I/O, `03` invalid operation, `04` unavailable, `99` unexpected; `00` test entry. No raw exception messages or file details are exported. Pre-update records remain intact and are labelled `MM-OLD-xx` (operation unknown); historical action cannot be reconstructed retroactively.

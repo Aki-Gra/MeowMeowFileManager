@@ -54,6 +54,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.meowmeow.filemanager.MeowMeowApp
 import com.meowmeow.filemanager.diagnostics.ErrorArea
+import com.meowmeow.filemanager.diagnostics.ErrorOperation
 import com.meowmeow.filemanager.model.humanSize
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -113,7 +114,7 @@ fun StorageOverviewScreen(
             withContext(Dispatchers.IO) { readSpaceInfo(context) }
         }
         result.onFailure {
-            (context as MeowMeowApp).errorLog.record(ErrorArea.STORAGE_OVERVIEW, it)
+            (context as MeowMeowApp).errorLog.record(ErrorArea.STORAGE_OVERVIEW, it, operation = ErrorOperation.STORAGE_READ)
         }
         value = result.getOrNull()
     }

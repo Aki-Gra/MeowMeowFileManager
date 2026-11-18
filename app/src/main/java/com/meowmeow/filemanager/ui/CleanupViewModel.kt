@@ -3,6 +3,7 @@ package com.meowmeow.filemanager.ui
 import android.content.Context
 import com.meowmeow.filemanager.MeowMeowApp
 import com.meowmeow.filemanager.diagnostics.ErrorArea
+import com.meowmeow.filemanager.diagnostics.ErrorOperation
 import com.meowmeow.filemanager.diagnostics.ErrorLogStore
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
@@ -55,7 +56,7 @@ class CleanupViewModel(
                     truncated = truncated
                 )
             }.onFailure {
-                errorLog.record(ErrorArea.CLEANUP_SCAN, it)
+                errorLog.record(ErrorArea.CLEANUP_SCAN, it, operation = ErrorOperation.CLEANUP_SCAN)
                 _state.value = CleanupUiState(message = it.message ?: "Scan failed.")
             }
         }
@@ -85,7 +86,7 @@ class CleanupViewModel(
                     } catch (cancelled: kotlinx.coroutines.CancellationException) {
                         throw cancelled
                     } catch (error: Exception) {
-                        errorLog.record(ErrorArea.CLEANUP_DELETE, error)
+                        errorLog.record(ErrorArea.CLEANUP_DELETE, error, operation = ErrorOperation.CLEANUP_DELETE)
                         failureMessages.add(error.message ?: "Could not delete file.")
                     }
                 }
@@ -107,7 +108,7 @@ class CleanupViewModel(
                     message = summary
                 )
             }.onFailure {
-                errorLog.record(ErrorArea.CLEANUP_SCAN, it)
+                errorLog.record(ErrorArea.CLEANUP_SCAN, it, operation = ErrorOperation.CLEANUP_SCAN)
                 _state.value = CleanupUiState(message = "Some files were processed, but refreshing failed.")
             }
         }

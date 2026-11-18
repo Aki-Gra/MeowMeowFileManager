@@ -37,6 +37,7 @@ import androidx.core.content.FileProvider
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.meowmeow.filemanager.diagnostics.ErrorArea
+import com.meowmeow.filemanager.diagnostics.ErrorOperation
 import com.meowmeow.filemanager.diagnostics.formatErrorLog
 import com.meowmeow.filemanager.diagnostics.suggestedErrorLogFileName
 import com.meowmeow.filemanager.model.FileEntry
@@ -107,7 +108,7 @@ class MainActivity : ComponentActivity() {
                         } catch (cancelled: kotlinx.coroutines.CancellationException) {
                             throw cancelled
                         } catch (failure: Exception) {
-                            errorLog.record(ErrorArea.LOG_EXPORT, failure)
+                            errorLog.record(ErrorArea.LOG_EXPORT, failure, operation = ErrorOperation.LOG_EXPORT)
                             Toast.makeText(this@MainActivity, "Could not save error log", Toast.LENGTH_LONG).show()
                         }
                     }
@@ -297,10 +298,10 @@ class MainActivity : ComponentActivity() {
             }
             startActivity(Intent.createChooser(intent, "Open with"))
         } catch (failure: ActivityNotFoundException) {
-            (application as MeowMeowApp).errorLog.record(ErrorArea.EXTERNAL_FILE_OPEN, failure)
+            (application as MeowMeowApp).errorLog.record(ErrorArea.EXTERNAL_FILE_OPEN, failure, operation = ErrorOperation.EXTERNAL_OPEN)
             Toast.makeText(this, "No app can open this file type", Toast.LENGTH_LONG).show()
         } catch (failure: Exception) {
-            (application as MeowMeowApp).errorLog.record(ErrorArea.EXTERNAL_FILE_OPEN, failure)
+            (application as MeowMeowApp).errorLog.record(ErrorArea.EXTERNAL_FILE_OPEN, failure, operation = ErrorOperation.EXTERNAL_OPEN)
             Toast.makeText(this, "Unable to open this file", Toast.LENGTH_LONG).show()
         }
     }

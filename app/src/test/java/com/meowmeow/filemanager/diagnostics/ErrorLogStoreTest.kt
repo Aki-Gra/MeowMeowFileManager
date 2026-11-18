@@ -38,6 +38,32 @@ class ErrorLogStoreTest {
         assertFalse(fileName.contains("/"))
     }
 
+    @Test fun stableOperationCodesDoNotContainExceptionMessages() {
+        val error = IllegalStateException("Private /storage/emulated/0/secret.txt")
+        val entry = ErrorEntry(
+            12345L, ErrorArea.DEVICE_FILE_OPERATION, errorCategory(error),
+            false, ErrorOperation.FS_RENAME
+        )
+        assertEquals("MM-FS-REN-04", errorCode(entry))
+        val report = formatErrorLog(listOf(entry))
+        assertTrue(report.contains("MM-FS-REN-04 | Rename device item"))
+        assertFalse(report.contains("secret.txt"))
+    }
+
+    @Test fun oldEntriesRemainClearlyUnspecified() {
+        val old = ErrorEntry(12345L, ErrorArea.DEVICE_FILE_OPERATION, "Operation unavailable", false)
+        assertEquals("MM-OLD-04", errorCode(old))
+        assertTrue(formatErrorLog(listOf(old)).contains("Unspecified (older entry)"))
+    }
+
+    @Test fun distinguishesCreateAndDeleteErrors() {
+        val create = ErrorEntry(1L, ErrorArea.DEVICE_FILE_OPERATION,
+            "Operation unavailable", false, ErrorOperation.FS_CREATE)
+        val delete = create.copy(operation = ErrorOperation.FS_DELETE)
+        assertEquals("MM-FS-MKDIR-04", errorCode(create))
+        assertEquals("MM-FS-DEL-04", errorCode(delete))
+    }
+
     @Test fun emptyLogExplainsItsState() {
         assertTrue(formatErrorLog(emptyList()).contains("No errors recorded."))
     }
