@@ -83,3 +83,7 @@ Starting with the error-code update, each new entry includes a searchable, fixed
 ### Expected validation results
 
 Duplicate names and invalid filenames during folder creation or renaming are **not recorded as errors**. They remain visible to the user as actionable validation feedback. A dedicated `ExpectedFileOperationException` distinguishes these cases from genuine I/O, permission or unexpected failures; `ErrorLogStore.record` ignores only the typed expected result (and normal coroutine cancellation). Older saved log entries are not rewritten or removed.
+
+## MeowMeow app icon
+
+The launcher now uses a custom MeowMeow cat-and-folder icon: a white smiling cat resting on a golden folder, with a purple paw print and purple background. The adaptive foreground is an Android vector drawable, not a bitmap, so it scales across device densities. Resources include adaptive launcher icons for Android 8+, a round icon alias, and a simplified Android 13+ monochrome resource for themed icons. No extra permission or app data changes are required.

@@ -39,3 +39,9 @@
 - [ ] Clear the local error log, then deliberately create a duplicate-named folder and rename a test file to an existing filename. Both should show friendly validation feedback; **Settings error count must remain unchanged**.
 - [ ] Try an invalid name (for example a blank name) and confirm no log entry is produced.
 - [ ] Confirm genuine I/O or permission failures are still logged with an operation code; never deliberately corrupt personal files to test failures.
+
+## Launcher icon QA
+
+- [ ] Install the latest APK and confirm the home-screen icon shows the MeowMeow cat and yellow folder instead of the default Android icon.
+- [ ] Confirm the icon looks centered on launchers using circle and squircle masks, including the app drawer and Android Settings → Apps.
+- [ ] On Android 13+, turn on themed icons and verify MeowMeow has a legible monochrome icon; disable themed icons to see the colored version.
