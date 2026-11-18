@@ -25,7 +25,8 @@ class ErrorLogStoreTest {
 
     @Test fun testEntryIsExplicitlyMarked() {
         val report = formatErrorLog(listOf(
-            ErrorEntry(1000L, ErrorArea.DIAGNOSTICS_TEST, "Test entry", false)
+            ErrorEntry(1000L, ErrorArea.DIAGNOSTICS_TEST, "Test entry", false,
+                ErrorOperation.DIAGNOSTICS_TEST)
         ))
         assertTrue(report.contains("TEST | DIAGNOSTICS TEST | MM-LOG-TEST-00"))
         assertTrue(report.contains("MM-LOG-TEST-00 | Test log | Test entry"))
