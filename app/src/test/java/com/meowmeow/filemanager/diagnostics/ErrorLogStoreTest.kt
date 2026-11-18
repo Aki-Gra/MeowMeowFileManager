@@ -28,7 +28,7 @@ class ErrorLogStoreTest {
             ErrorEntry(1000L, ErrorArea.DIAGNOSTICS_TEST, "Test entry", false)
         ))
         assertTrue(report.contains("TEST | DIAGNOSTICS TEST | MM-LOG-TEST-00"))
-        assertTrue(report.contains("Test log | Test entry") || report.contains("Test log | Test entry"))
+        assertTrue(report.contains("MM-LOG-TEST-00 | Test log | Test entry"))
     }
 
     @Test fun suggestedExportFilenameIsSafeAndText() {
