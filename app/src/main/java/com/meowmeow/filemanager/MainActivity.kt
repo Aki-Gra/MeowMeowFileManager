@@ -19,6 +19,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CleaningServices
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Storage
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -33,6 +34,7 @@ import androidx.compose.ui.Modifier
 import androidx.core.content.FileProvider
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.meowmeow.filemanager.diagnostics.ErrorArea
 import com.meowmeow.filemanager.model.FileEntry
 import com.meowmeow.filemanager.ui.CleanupScreen
 import com.meowmeow.filemanager.ui.CleanupViewModel
@@ -40,10 +42,11 @@ import com.meowmeow.filemanager.ui.DeviceExplorerViewModel
 import com.meowmeow.filemanager.ui.ExplorerScreen
 import com.meowmeow.filemanager.ui.ExplorerViewModel
 import com.meowmeow.filemanager.ui.StorageOverviewScreen
+import com.meowmeow.filemanager.ui.SettingsScreen
 import com.meowmeow.filemanager.ui.theme.MeowMeowTheme
 import java.io.File
 
-private enum class Page { FILES, STORAGE, CLEANUP }
+private enum class Page { FILES, STORAGE, CLEANUP, SETTINGS }
 
 class MainActivity : ComponentActivity() {
     private var allFilesGranted by mutableStateOf(false)
@@ -55,14 +58,15 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        val errorLog = (application as MeowMeowApp).errorLog
         val scoped = ViewModelProvider(
             this, ExplorerViewModel.Factory(applicationContext)
         )[ExplorerViewModel::class.java]
         val device = ViewModelProvider(
-            this, DeviceExplorerViewModel.Factory()
+            this, DeviceExplorerViewModel.Factory(applicationContext)
         )[DeviceExplorerViewModel::class.java]
         val cleanup = ViewModelProvider(
-            this, CleanupViewModel.Factory()
+            this, CleanupViewModel.Factory(applicationContext)
         )[CleanupViewModel::class.java]
         val supported = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
 
@@ -70,6 +74,8 @@ class MainActivity : ComponentActivity() {
             val scopedState by scoped.state.collectAsStateWithLifecycle()
             val deviceState by device.state.collectAsStateWithLifecycle()
             val cleanupState by cleanup.state.collectAsStateWithLifecycle()
+            val savedErrors by errorLog.entries.collectAsStateWithLifecycle()
+            val errorLoggingEnabled by errorLog.enabled.collectAsStateWithLifecycle()
             var page by rememberSaveable { mutableStateOf(Page.FILES) }
             var usingDevice by rememberSaveable { mutableStateOf(canBrowseSharedStorage()) }
             val folderPicker = rememberLauncherForActivityResult(
@@ -134,6 +140,12 @@ class MainActivity : ComponentActivity() {
                                 icon = { Icon(Icons.Default.CleaningServices, contentDescription = null) },
                                 label = { Text("Cleanup") }
                             )
+                            NavigationBarItem(
+                                selected = page == Page.SETTINGS,
+                                onClick = { page = Page.SETTINGS },
+                                icon = { Icon(Icons.Default.Settings, contentDescription = null) },
+                                label = { Text("Settings") }
+                            )
                         }
                     }
                 ) { padding ->
@@ -181,6 +193,12 @@ class MainActivity : ComponentActivity() {
                                 onBrowseDownloads = browseDownloads,
                                 onOpenCleanup = { page = Page.CLEANUP },
                                 onOpenSystemStorage = ::openSystemStorage
+                            )
+                            Page.SETTINGS -> SettingsScreen(
+                                loggingEnabled = errorLoggingEnabled,
+                                events = savedErrors,
+                                onSetLoggingEnabled = errorLog::setEnabled,
+                                onClear = errorLog::clear
                             )
                             Page.CLEANUP -> CleanupScreen(
                                 state = cleanupState,
@@ -236,9 +254,11 @@ class MainActivity : ComponentActivity() {
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
             startActivity(Intent.createChooser(intent, "Open with"))
-        } catch (_: ActivityNotFoundException) {
+        } catch (failure: ActivityNotFoundException) {
+            (application as MeowMeowApp).errorLog.record(ErrorArea.EXTERNAL_FILE_OPEN, failure)
             Toast.makeText(this, "No app can open this file type", Toast.LENGTH_LONG).show()
-        } catch (_: Exception) {
+        } catch (failure: Exception) {
+            (application as MeowMeowApp).errorLog.record(ErrorArea.EXTERNAL_FILE_OPEN, failure)
             Toast.makeText(this, "Unable to open this file", Toast.LENGTH_LONG).show()
         }
     }

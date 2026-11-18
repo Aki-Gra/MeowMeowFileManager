@@ -52,6 +52,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.meowmeow.filemanager.MeowMeowApp
+import com.meowmeow.filemanager.diagnostics.ErrorArea
 import com.meowmeow.filemanager.model.humanSize
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -106,7 +108,10 @@ fun StorageOverviewScreen(
     var refresh by remember { mutableIntStateOf(0) }
     val stats by produceState<SpaceInfo?>(initialValue = null, key1 = refresh) {
         value = withContext(Dispatchers.IO) {
-            runCatching { readSpaceInfo(context) }.getOrNull()
+            runCatching { readSpaceInfo(context) }
+                .onFailure {
+                    (context as MeowMeowApp).errorLog.record(ErrorArea.STORAGE_OVERVIEW, it)
+                }.getOrNull()
         }
     }
     Scaffold(topBar = { TopAppBar(title = { Text("Storage overview") }) }) { padding ->

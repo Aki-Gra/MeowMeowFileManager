@@ -4,6 +4,9 @@ import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.meowmeow.filemanager.MeowMeowApp
+import com.meowmeow.filemanager.diagnostics.ErrorArea
+import com.meowmeow.filemanager.diagnostics.ErrorLogStore
 import com.meowmeow.filemanager.data.LocalFileRepository
 import com.meowmeow.filemanager.model.FileEntry
 import com.meowmeow.filemanager.model.SortMode
@@ -17,7 +20,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /** A separate direct-file backend. The original SAF browser remains available as a fallback. */
-class DeviceExplorerViewModel(private val repository: LocalFileRepository) : ViewModel() {
+class DeviceExplorerViewModel(
+    private val repository: LocalFileRepository,
+    private val errorLog: ErrorLogStore
+) : ViewModel() {
     private val folders = mutableListOf<File>()
     private var scanJob: Job? = null
     private val _state = MutableStateFlow(ExplorerUiState(isLoading = false))
@@ -43,7 +49,9 @@ class DeviceExplorerViewModel(private val repository: LocalFileRepository) : Vie
 
     fun openDirectory(entry: FileEntry) {
         if (!entry.isDirectory) return
-        val target = runCatching { repository.fromEntry(entry) }.getOrNull() ?: return
+        val target = runCatching { repository.fromEntry(entry) }
+            .onFailure { errorLog.record(ErrorArea.DEVICE_BROWSING, it) }
+            .getOrNull() ?: return
         if (target.parentFile != folders.lastOrNull() || !target.isDirectory) return
         folders.add(target)
         loadFolder()
@@ -76,9 +84,13 @@ class DeviceExplorerViewModel(private val repository: LocalFileRepository) : Vie
         viewModelScope.launch {
             val result = resultUnlessCancelled { withContext(Dispatchers.IO) { block() } }
             if (result.isSuccess) loadFolder()
-            else _state.value = _state.value.copy(
-                errorMessage = result.exceptionOrNull()?.message ?: "Operation failed."
-            )
+            else {
+                val failure = result.exceptionOrNull()!!
+                errorLog.record(ErrorArea.DEVICE_FILE_OPERATION, failure)
+                _state.value = _state.value.copy(
+                    errorMessage = failure.message ?: "Operation failed."
+                )
+            }
         }
     }
 
@@ -112,6 +124,7 @@ class DeviceExplorerViewModel(private val repository: LocalFileRepository) : Vie
                     isLoading = false
                 )
             }.onFailure {
+                errorLog.record(ErrorArea.DEVICE_BROWSING, it)
                 _state.value = _state.value.copy(
                     isLoading = false,
                     errorMessage = it.message ?: "Could not open this folder."
@@ -122,11 +135,12 @@ class DeviceExplorerViewModel(private val repository: LocalFileRepository) : Vie
 
     fun clearError() { _state.value = _state.value.copy(errorMessage = null) }
 
-    class Factory : ViewModelProvider.Factory {
+    class Factory(context: Context) : ViewModelProvider.Factory {
+        private val errorLog = (context.applicationContext as MeowMeowApp).errorLog
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
             require(modelClass.isAssignableFrom(DeviceExplorerViewModel::class.java))
-            return DeviceExplorerViewModel(LocalFileRepository()) as T
+            return DeviceExplorerViewModel(LocalFileRepository(), errorLog) as T
         }
     }
 }

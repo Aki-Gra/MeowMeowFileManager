@@ -3,6 +3,7 @@
     <!-- Genuine local file-manager functions, explicitly enabled in Android Special app access. -->
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
     <application
+        android:name=".MeowMeowApp"
         android:allowBackup="false"
         android:label="@string/app_name"
         android:supportsRtl="true"

@@ -6,6 +6,9 @@ import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.meowmeow.filemanager.MeowMeowApp
+import com.meowmeow.filemanager.diagnostics.ErrorArea
+import com.meowmeow.filemanager.diagnostics.ErrorLogStore
 import com.meowmeow.filemanager.data.DocumentRepository
 import com.meowmeow.filemanager.model.FileEntry
 import com.meowmeow.filemanager.model.SortMode
@@ -27,7 +30,10 @@ data class ExplorerUiState(
     val errorMessage: String? = null
 )
 
-class ExplorerViewModel(private val repository: DocumentRepository) : ViewModel() {
+class ExplorerViewModel(
+    private val repository: DocumentRepository,
+    private val errorLog: ErrorLogStore
+) : ViewModel() {
     private data class FolderLevel(val name: String, val file: DocumentFile)
 
     private val folders = mutableListOf<FolderLevel>()
@@ -43,6 +49,7 @@ class ExplorerViewModel(private val repository: DocumentRepository) : ViewModel(
             val result = resultUnlessCancelled { withContext(Dispatchers.IO) { repository.restoreRoot() } }
             val root = result.getOrNull()
             if (root == null) {
+                result.exceptionOrNull()?.let { errorLog.record(ErrorArea.SCOPED_BROWSING, it) }
                 _state.value = _state.value.copy(
                     isLoading = false,
                     errorMessage = result.exceptionOrNull()?.let { friendlyError(it) }
@@ -63,6 +70,7 @@ class ExplorerViewModel(private val repository: DocumentRepository) : ViewModel(
             }
             result.onSuccess(::enterRoot)
                 .onFailure {
+                    errorLog.record(ErrorArea.SCOPED_FOLDER_PICKER, it)
                     _state.value = _state.value.copy(isLoading = false, errorMessage = friendlyError(it))
                 }
         }
@@ -113,7 +121,11 @@ class ExplorerViewModel(private val repository: DocumentRepository) : ViewModel(
         viewModelScope.launch {
             val result = resultUnlessCancelled { withContext(Dispatchers.IO) { block() } }
             if (result.isSuccess) loadFolder()
-            else _state.value = _state.value.copy(errorMessage = friendlyError(result.exceptionOrNull()!!))
+            else {
+                val failure = result.exceptionOrNull()!!
+                errorLog.record(ErrorArea.SCOPED_FILE_OPERATION, failure)
+                _state.value = _state.value.copy(errorMessage = friendlyError(failure))
+            }
         }
     }
 
@@ -146,6 +158,7 @@ class ExplorerViewModel(private val repository: DocumentRepository) : ViewModel(
                     isLoading = false
                 )
             }.onFailure {
+                errorLog.record(ErrorArea.SCOPED_BROWSING, it)
                 children = emptyMap()
                 _state.value = _state.value.copy(isLoading = false, errorMessage = friendlyError(it))
             }
@@ -161,11 +174,12 @@ class ExplorerViewModel(private val repository: DocumentRepository) : ViewModel(
 
     class Factory(context: Context) : ViewModelProvider.Factory {
         private val repository = DocumentRepository(context.applicationContext)
+        private val errorLog = (context.applicationContext as MeowMeowApp).errorLog
 
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
             require(modelClass.isAssignableFrom(ExplorerViewModel::class.java))
-            return ExplorerViewModel(repository) as T
+            return ExplorerViewModel(repository, errorLog) as T
         }
     }
 }

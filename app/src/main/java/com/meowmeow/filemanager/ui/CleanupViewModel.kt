@@ -1,5 +1,9 @@
 package com.meowmeow.filemanager.ui
 
+import android.content.Context
+import com.meowmeow.filemanager.MeowMeowApp
+import com.meowmeow.filemanager.diagnostics.ErrorArea
+import com.meowmeow.filemanager.diagnostics.ErrorLogStore
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -25,7 +29,10 @@ data class CleanupUiState(
     val selectedBytes: Long get() = selected.sumOf { it.sizeBytes }
 }
 
-class CleanupViewModel(private val repository: LocalFileRepository) : ViewModel() {
+class CleanupViewModel(
+    private val repository: LocalFileRepository,
+    private val errorLog: ErrorLogStore
+) : ViewModel() {
     private val _state = MutableStateFlow(CleanupUiState())
     val state: StateFlow<CleanupUiState> = _state
     private var task: Job? = null
@@ -48,6 +55,7 @@ class CleanupViewModel(private val repository: LocalFileRepository) : ViewModel(
                     truncated = truncated
                 )
             }.onFailure {
+                errorLog.record(ErrorArea.CLEANUP_SCAN, it)
                 _state.value = CleanupUiState(message = it.message ?: "Scan failed.")
             }
         }
@@ -77,6 +85,7 @@ class CleanupViewModel(private val repository: LocalFileRepository) : ViewModel(
                     } catch (cancelled: kotlinx.coroutines.CancellationException) {
                         throw cancelled
                     } catch (error: Exception) {
+                        errorLog.record(ErrorArea.CLEANUP_DELETE, error)
                         failureMessages.add(error.message ?: "Could not delete file.")
                     }
                 }
@@ -98,6 +107,7 @@ class CleanupViewModel(private val repository: LocalFileRepository) : ViewModel(
                     message = summary
                 )
             }.onFailure {
+                errorLog.record(ErrorArea.CLEANUP_SCAN, it)
                 _state.value = CleanupUiState(message = "Some files were processed, but refreshing failed.")
             }
         }
@@ -107,11 +117,12 @@ class CleanupViewModel(private val repository: LocalFileRepository) : ViewModel(
         _state.value = _state.value.copy(message = null)
     }
 
-    class Factory : ViewModelProvider.Factory {
+    class Factory(context: Context) : ViewModelProvider.Factory {
+        private val errorLog = (context.applicationContext as MeowMeowApp).errorLog
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
             require(modelClass.isAssignableFrom(CleanupViewModel::class.java))
-            return CleanupViewModel(LocalFileRepository()) as T
+            return CleanupViewModel(LocalFileRepository(), errorLog) as T
         }
     }
 }
