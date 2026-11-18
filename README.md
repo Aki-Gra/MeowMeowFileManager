@@ -36,7 +36,7 @@ Filesystem and provider work happens on Dispatchers.IO rather than the main thre
 ## Build and run
 
 1. Install modern Android Studio, JDK 17 and Android SDK Platform 37.
-2. Check out this branch (it is stacked on the original file explorer branch).
+2. Check out `feat/android-file-explorer` (the single consolidated MVP branch).
 3. Run the command: ./gradlew :app:testDebugUnitTest :app:assembleDebug
 4. Install the debug APK from app/build/outputs/apk/debug/app-debug.apk.
 5. On Android 11+, use **Enable full file access** in Files or Storage to open Android settings, allow access, then return to MeowMeow. Explore device storage or go straight to Downloads.
@@ -71,3 +71,7 @@ Settings allows disabling future logging, creating a harmless **test log entry**
 Open **Settings → Error logging → Export logs to .txt**. The Android system **Save** dialog appears with a timestamped suggested file name, for example `MeowMeow-error-log-2026-11-18_15-47-00.txt`. Choose **Downloads** or any supported destination and tap **Save**. MeowMeow writes the same sanitized text you see through Copy/Share, in UTF-8, and shows a success/failure message. It uses `ACTION_CREATE_DOCUMENT` through Activity Result Contracts: no additional storage permission, direct filesystem path, automatic export or background upload is required. Cancelling the picker saves nothing. Existing log history remains intact after export.
 
 **QA additions:** Create a test log entry, export to Downloads, inspect the resulting readable `.txt` and timestamps, verify no file paths/names or sensitive exception text appear, cancel a second export, verify the history remains unchanged, and check that tapping Export with no entries is disabled. Check a failed write reports a friendly error without crashing.
+
+## Before the final device test
+
+Follow the focused checklist in [`docs/FINAL_QA.md`](docs/FINAL_QA.md). Prior Files, Storage and Cleanup flows were reported as passing on a real device; the Settings / error log export still needs a final pass. Use only disposable files for any deletion checks.

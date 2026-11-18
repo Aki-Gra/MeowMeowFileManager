@@ -83,6 +83,7 @@ class LocalFileRepository {
     fun rename(file: File, newName: String) {
         require(isValidFileName(newName)) { "Enter a valid name." }
         val source = checked(file)
+        if (source.name == newName) return
         check(source.canWrite()) { "Item is read-only." }
         val target = checked(File(requireNotNull(source.parentFile), newName))
         check(!target.exists()) { "An item with that name already exists." }

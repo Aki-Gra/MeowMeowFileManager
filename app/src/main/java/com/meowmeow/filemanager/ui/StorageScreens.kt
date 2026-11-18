@@ -107,12 +107,15 @@ fun StorageOverviewScreen(
     val context = LocalContext.current.applicationContext
     var refresh by remember { mutableIntStateOf(0) }
     val stats by produceState<SpaceInfo?>(initialValue = null, key1 = refresh) {
-        value = withContext(Dispatchers.IO) {
-            runCatching { readSpaceInfo(context) }
-                .onFailure {
-                    (context as MeowMeowApp).errorLog.record(ErrorArea.STORAGE_OVERVIEW, it)
-                }.getOrNull()
+        // If the user switches tabs during refresh, cancellation is normal and
+        // must not become a false error-log entry.
+        val result = resultUnlessCancelled {
+            withContext(Dispatchers.IO) { readSpaceInfo(context) }
         }
+        result.onFailure {
+            (context as MeowMeowApp).errorLog.record(ErrorArea.STORAGE_OVERVIEW, it)
+        }
+        value = result.getOrNull()
     }
     Scaffold(topBar = { TopAppBar(title = { Text("Storage overview") }) }) { padding ->
         Column(
