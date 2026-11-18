@@ -43,6 +43,7 @@ fun SettingsScreen(
     events: List<ErrorEntry>,
     onSetLoggingEnabled: (Boolean) -> Unit,
     onRecordTest: () -> Unit,
+    onExport: () -> Unit,
     onClear: () -> Unit
 ) {
     val context = LocalContext.current
@@ -84,6 +85,16 @@ fun SettingsScreen(
                     OutlinedButton(enabled = loggingEnabled, onClick = onRecordTest) {
                         Text("Add test log entry")
                     }
+                    OutlinedButton(
+                        enabled = events.isNotEmpty(),
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = onExport
+                    ) { Text("Export logs to .txt") }
+                    Text(
+                        "Choose Downloads or another destination in Android's Save dialog. " +
+                            "An export is never created or shared automatically.",
+                        style = MaterialTheme.typography.bodySmall
+                    )
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedButton(enabled = events.isNotEmpty(), onClick = {
                             val clip = context.getSystemService(Context.CLIPBOARD_SERVICE)

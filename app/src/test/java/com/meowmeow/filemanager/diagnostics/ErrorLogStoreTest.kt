@@ -5,6 +5,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.IOException
+import java.util.Date
 
 class ErrorLogStoreTest {
     @Test fun categorizationDoesNotLeakPrivatePaths() {
@@ -27,6 +28,14 @@ class ErrorLogStoreTest {
             ErrorEntry(1000L, ErrorArea.DIAGNOSTICS_TEST, "Test entry", false)
         ))
         assertTrue(report.contains("TEST | DIAGNOSTICS TEST | Test entry"))
+    }
+
+    @Test fun suggestedExportFilenameIsSafeAndText() {
+        val fileName = suggestedErrorLogFileName(Date(0L))
+        assertTrue(fileName.startsWith("MeowMeow-error-log-"))
+        assertTrue(fileName.endsWith(".txt"))
+        assertFalse(fileName.contains(":"))
+        assertFalse(fileName.contains("/"))
     }
 
     @Test fun emptyLogExplainsItsState() {

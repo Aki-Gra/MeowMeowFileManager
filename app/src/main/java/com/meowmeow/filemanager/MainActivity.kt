@@ -3,6 +3,7 @@ package com.meowmeow.filemanager
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.net.Uri
+import java.io.IOException
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
@@ -31,10 +32,13 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.lifecycle.lifecycleScope
 import androidx.core.content.FileProvider
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.meowmeow.filemanager.diagnostics.ErrorArea
+import com.meowmeow.filemanager.diagnostics.formatErrorLog
+import com.meowmeow.filemanager.diagnostics.suggestedErrorLogFileName
 import com.meowmeow.filemanager.model.FileEntry
 import com.meowmeow.filemanager.ui.CleanupScreen
 import com.meowmeow.filemanager.ui.CleanupViewModel
@@ -45,6 +49,9 @@ import com.meowmeow.filemanager.ui.StorageOverviewScreen
 import com.meowmeow.filemanager.ui.SettingsScreen
 import com.meowmeow.filemanager.ui.theme.MeowMeowTheme
 import java.io.File
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 private enum class Page { FILES, STORAGE, CLEANUP, SETTINGS }
 
@@ -78,6 +85,34 @@ class MainActivity : ComponentActivity() {
             val errorLoggingEnabled by errorLog.enabled.collectAsStateWithLifecycle()
             var page by rememberSaveable { mutableStateOf(Page.FILES) }
             var usingDevice by rememberSaveable { mutableStateOf(canBrowseSharedStorage()) }
+            // Save the exact private, sanitized report that existed when Export was tapped.
+            // Preserve across Activity recreation while the system Save dialog is open.
+            var pendingExportText by rememberSaveable { mutableStateOf<String?>(null) }
+            val exportPicker = rememberLauncherForActivityResult(
+                ActivityResultContracts.CreateDocument("text/plain")
+            ) { uri ->
+                val report = pendingExportText
+                pendingExportText = null
+                if (uri != null && report != null) {
+                    lifecycleScope.launch {
+                        try {
+                            withContext(Dispatchers.IO) {
+                                contentResolver.openOutputStream(uri, "wt")?.use { stream ->
+                                    stream.bufferedWriter(Charsets.UTF_8).use { writer ->
+                                        writer.write(report)
+                                    }
+                                } ?: throw IOException("Selected document is not writable")
+                            }
+                            Toast.makeText(this@MainActivity, "Error log exported", Toast.LENGTH_SHORT).show()
+                        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                            throw cancelled
+                        } catch (failure: Exception) {
+                            errorLog.record(ErrorArea.LOG_EXPORT, failure)
+                            Toast.makeText(this@MainActivity, "Could not save error log", Toast.LENGTH_LONG).show()
+                        }
+                    }
+                }
+            }
             val folderPicker = rememberLauncherForActivityResult(
                 ActivityResultContracts.OpenDocumentTree()
             ) { uri ->
@@ -199,6 +234,12 @@ class MainActivity : ComponentActivity() {
                                 events = savedErrors,
                                 onSetLoggingEnabled = errorLog::setEnabled,
                                 onRecordTest = errorLog::recordTest,
+                                onExport = {
+                                    if (savedErrors.isNotEmpty()) {
+                                        pendingExportText = formatErrorLog(savedErrors)
+                                        exportPicker.launch(suggestedErrorLogFileName())
+                                    }
+                                },
                                 onClear = errorLog::clear
                             )
                             Page.CLEANUP -> CleanupScreen(

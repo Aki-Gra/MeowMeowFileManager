@@ -55,7 +55,7 @@ The bundled lightweight Gradle launcher bootstraps a checksum-verified Gradle wr
 
 The **Settings** tab includes private, persistent error logging. Logs are enabled by default and limited to the 100 most recent entries. Each entry includes time, a fixed operation category and a broad failure category; raw exception messages, stack traces, filenames and file paths are intentionally excluded. The app records handled browsing/file-operation/cleanup errors and uncaught crashes (without swallowing the crash). Nothing is uploaded automatically.
 
-Settings allows disabling future logging, creating a harmless **test log entry**, reviewing entries, **Copy**, **Share** (opens Android's share chooser only when tapped), and **Clear** after confirmation. Turning logging off does not delete existing entries; Clear removes stored history. All logs are stored in app-private preferences and are removed on uninstall. App backup is disabled.
+Settings allows disabling future logging, creating a harmless **test log entry**, reviewing entries, **Copy**, **Share** (opens Android's share chooser only when tapped), **Export logs to .txt** (Android system Save dialog), and **Clear** after confirmation. Turning logging off does not delete existing entries; Clear removes stored history. All logs are stored in app-private preferences and are removed on uninstall. App backup is disabled.
 
 ### QA: Settings
 
@@ -65,3 +65,9 @@ Settings allows disabling future logging, creating a harmless **test log entry**
 - Tap Copy and paste into a temporary note, then tap Share and verify the Android share chooser appears (cancel without sending). Confirm that the exported text contains no private names or paths.
 - Tap Clear and cancel (entries remain), then confirm Clear (history becomes empty). Reopen the app; history stays empty.
 - Repeat in dark mode / small-screen portrait. Avoid deliberately crashing the device for testing.
+
+### Export logs to a text file
+
+Open **Settings → Error logging → Export logs to .txt**. The Android system **Save** dialog appears with a timestamped suggested file name, for example `MeowMeow-error-log-2026-11-18_15-47-00.txt`. Choose **Downloads** or any supported destination and tap **Save**. MeowMeow writes the same sanitized text you see through Copy/Share, in UTF-8, and shows a success/failure message. It uses `ACTION_CREATE_DOCUMENT` through Activity Result Contracts: no additional storage permission, direct filesystem path, automatic export or background upload is required. Cancelling the picker saves nothing. Existing log history remains intact after export.
+
+**QA additions:** Create a test log entry, export to Downloads, inspect the resulting readable `.txt` and timestamps, verify no file paths/names or sensitive exception text appear, cancel a second export, verify the history remains unchanged, and check that tapping Export with no entries is disabled. Check a failed write reports a friendly error without crashing.

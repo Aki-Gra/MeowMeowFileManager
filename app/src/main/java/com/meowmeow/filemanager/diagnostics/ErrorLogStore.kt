@@ -7,12 +7,15 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import java.io.IOException
 import java.text.DateFormat
+import java.text.SimpleDateFormat
 import java.util.Date
+import java.util.Locale
 
 enum class ErrorArea {
     SCOPED_FOLDER_PICKER, SCOPED_BROWSING, SCOPED_FILE_OPERATION,
     DEVICE_BROWSING, DEVICE_FILE_OPERATION, CLEANUP_SCAN, CLEANUP_DELETE,
-    STORAGE_OVERVIEW, EXTERNAL_FILE_OPEN, APP_CRASH, DIAGNOSTICS_TEST
+    STORAGE_OVERVIEW, EXTERNAL_FILE_OPEN, APP_CRASH, DIAGNOSTICS_TEST,
+    LOG_EXPORT
 }
 data class ErrorEntry(
     val timestampMillis: Long,
@@ -44,6 +47,11 @@ fun formatErrorLog(events: List<ErrorEntry>): String = buildString {
         appendLine(item.category)
     }
 }
+
+/** Suggested filename only. The user selects the destination through Android's Save dialog. */
+fun suggestedErrorLogFileName(now: Date = Date()): String =
+    "MeowMeow-error-log-" +
+        SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", Locale.ROOT).format(now) + ".txt"
 
 /** Private app storage. Retains up to 100 entries; no network or automatic sharing. */
 class ErrorLogStore(context: Context) {
