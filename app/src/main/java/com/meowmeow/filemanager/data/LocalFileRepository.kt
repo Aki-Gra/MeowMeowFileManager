@@ -6,7 +6,8 @@ import android.os.Environment
 import com.meowmeow.filemanager.model.CleanupCandidate
 import com.meowmeow.filemanager.model.FileEntry
 import com.meowmeow.filemanager.model.isLargeDownload
-import com.meowmeow.filemanager.model.isValidFileName
+import com.meowmeow.filemanager.model.validateRequestedName
+import com.meowmeow.filemanager.model.rejectExistingName
 import java.io.File
 import java.util.ArrayDeque
 
@@ -72,21 +73,21 @@ class LocalFileRepository {
     fun canCreateFolder(folder: File): Boolean = checked(folder).canWrite()
 
     fun createFolder(parent: File, name: String) {
-        require(isValidFileName(name)) { "Enter a valid folder name." }
+        validateRequestedName(name)
         val directory = checked(parent)
         check(directory.isDirectory && directory.canWrite()) { "Folder is read-only." }
         val target = checked(File(directory, name))
-        check(!target.exists()) { "An item with that name already exists." }
+        rejectExistingName(target.exists())
         check(target.mkdir()) { "Could not create the folder." }
     }
 
     fun rename(file: File, newName: String) {
-        require(isValidFileName(newName)) { "Enter a valid name." }
+        validateRequestedName(newName)
         val source = checked(file)
         if (source.name == newName) return
         check(source.canWrite()) { "Item is read-only." }
         val target = checked(File(requireNotNull(source.parentFile), newName))
-        check(!target.exists()) { "An item with that name already exists." }
+        rejectExistingName(target.exists())
         check(source.renameTo(target)) { "Could not rename the item." }
     }
 

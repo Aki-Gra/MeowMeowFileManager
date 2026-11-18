@@ -5,7 +5,8 @@ import android.content.Intent
 import android.net.Uri
 import androidx.documentfile.provider.DocumentFile
 import com.meowmeow.filemanager.model.FileEntry
-import com.meowmeow.filemanager.model.isValidFileName
+import com.meowmeow.filemanager.model.validateRequestedName
+import com.meowmeow.filemanager.model.rejectExistingName
 
 /** Scoped Storage Access Framework access: only folders selected by the user. */
 class DocumentRepository(private val context: Context) {
@@ -54,18 +55,18 @@ class DocumentRepository(private val context: Context) {
         }
 
     fun createFolder(parent: DocumentFile, name: String) {
-        require(isValidFileName(name)) { "Enter a valid folder name" }
+        validateRequestedName(name)
         check(parent.canWrite()) { "This folder is read-only" }
-        check(parent.findFile(name) == null) { "An item with that name already exists" }
+        rejectExistingName(parent.findFile(name) != null)
         check(parent.createDirectory(name) != null) { "Could not create folder" }
     }
 
     fun rename(file: DocumentFile, newName: String) {
-        require(isValidFileName(newName)) { "Enter a valid name" }
+        validateRequestedName(newName)
         if (file.name == newName) return
         check(file.canWrite()) { "This item is read-only" }
         val parent = file.parentFile ?: error("The parent folder is unavailable")
-        check(parent.findFile(newName) == null) { "An item with that name already exists" }
+        rejectExistingName(parent.findFile(newName) != null)
         check(file.renameTo(newName)) { "Could not rename item" }
     }
 

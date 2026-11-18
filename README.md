@@ -79,3 +79,7 @@ Follow the focused checklist in [`docs/FINAL_QA.md`](docs/FINAL_QA.md). Prior Fi
 ### Stable diagnostics codes
 
 Starting with the error-code update, each new entry includes a searchable, fixed `MM-<action>-<reason>` code and operation label. Examples: `MM-FS-REN-04` = direct-storage rename failed with an unavailable-operation condition; `MM-FS-MKDIR-04` = create-directory operation unavailable; `MM-SAF-DEL-01` = scoped-folder deletion denied. Reason suffixes: `01` permission, `02` I/O, `03` invalid operation, `04` unavailable, `99` unexpected; `00` test entry. No raw exception messages or file details are exported. Pre-update records remain intact and are labelled `MM-OLD-xx` (operation unknown); historical action cannot be reconstructed retroactively.
+
+### Expected validation results
+
+Duplicate names and invalid filenames during folder creation or renaming are **not recorded as errors**. They remain visible to the user as actionable validation feedback. A dedicated `ExpectedFileOperationException` distinguishes these cases from genuine I/O, permission or unexpected failures; `ErrorLogStore.record` ignores only the typed expected result (and normal coroutine cancellation). Older saved log entries are not rewritten or removed.

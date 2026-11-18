@@ -6,6 +6,7 @@ import org.json.JSONObject
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import java.io.IOException
+import com.meowmeow.filemanager.model.shouldRecordOperationError
 import java.text.DateFormat
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -116,7 +117,7 @@ class ErrorLogStore(context: Context) {
         fatal: Boolean = false,
         operation: ErrorOperation = ErrorOperation.UNKNOWN
     ) {
-        if (!_enabled.value) return
+        if (!_enabled.value || !shouldRecordOperationError(error)) return
         addEntry(ErrorEntry(System.currentTimeMillis(), area, errorCategory(error), fatal, operation), fatal)
     }
 

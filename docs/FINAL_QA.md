@@ -31,5 +31,11 @@
 
 - [ ] With the new build, check **Settings → Error logging**: new errors and test entries have a stable `MM-...` code and action label, both on screen and in Copy/Export `.txt`.
 - [ ] Reopen the app and verify older saved entries stay visible, with code `MM-OLD-xx` and **Unspecified (older entry)** rather than an invented operation.
-- [ ] Using *disposable* files only, attempt a rename to an existing name. Verify a `MM-FS-REN-04` or `MM-SAF-REN-04` code is produced for the failed rename, instead of generic Device File Operation alone.
+- [ ] Using *disposable* files only, try renaming an item to an existing name (direct storage and SAF). The UI must explain the conflict without replacing an item or adding a new error-log entry. Repeat with an invalid name; neither validation result should be logged. An actual unexpected rename failure should still create a coded log entry.
 - [ ] Confirm no private filenames, paths, exception messages, file contents or stack traces are recorded.
+
+## Expected operation results (logging policy)
+
+- [ ] Clear the local error log, then deliberately create a duplicate-named folder and rename a test file to an existing filename. Both should show friendly validation feedback; **Settings error count must remain unchanged**.
+- [ ] Try an invalid name (for example a blank name) and confirm no log entry is produced.
+- [ ] Confirm genuine I/O or permission failures are still logged with an operation code; never deliberately corrupt personal files to test failures.
