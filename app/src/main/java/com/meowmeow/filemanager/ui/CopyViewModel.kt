@@ -59,11 +59,13 @@ class CopyViewModel(
             _state.value = _state.value.copy(notice = "Open a writable folder first.")
             return
         }
+        // Mark the operation as started before dispatching the coroutine, so
+        // rapid double-taps cannot start two copies of the same item.
+        _state.value = _state.value.copy(
+            isCopying = true, filesCopied = 0, foldersCopied = 0,
+            bytesCopied = 0, notice = null
+        )
         job = viewModelScope.launch {
-            _state.value = _state.value.copy(
-                isCopying = true, filesCopied = 0, foldersCopied = 0,
-                bytesCopied = 0, notice = null
-            )
             try {
                 val result = withContext(Dispatchers.IO) {
                     val isFolder = copyOps.isDirectory(source.node)
