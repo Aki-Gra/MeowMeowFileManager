@@ -218,9 +218,9 @@ class MainActivity : ComponentActivity() {
                                     if (usingDevice) device.clearError() else scoped.clearError()
                                 },
                                 searchState = if (usingDevice) deviceSearch else scopedSearch,
-                                onSearch = { query, kind, recursive ->
-                                    if (usingDevice) device.startSearch(query, kind, recursive)
-                                    else scoped.startSearch(query, kind, recursive)
+                                onSearch = { query, kind, scope ->
+                                    if (usingDevice) device.startSearch(query, kind, scope)
+                                    else scoped.startSearch(query, kind, scope)
                                 },
                                 onCancelSearch = {
                                     // A tab or storage-mode switch must cancel whichever scan was active.
