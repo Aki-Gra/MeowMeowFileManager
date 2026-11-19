@@ -87,3 +87,9 @@ Duplicate names and invalid filenames during folder creation or renaming are **n
 ## MeowMeow app icon
 
 The launcher now uses a custom MeowMeow cat-and-folder icon: a white smiling cat resting on a golden folder, with a purple paw print and purple background. The adaptive foreground is an Android vector drawable, not a bitmap, so it scales across device densities. Resources include adaptive launcher icons for Android 8+, a round icon alias, and a simplified Android 13+ monochrome resource for themed icons. No extra permission or app data changes are required.
+
+## v0.2 development branch — search and file-type filtering
+
+On `feat/file-tools-v0-2`, Files has a new **Search** icon. Search can filter by filename and file category, either in the current directory or recursively from the chosen storage root. Scans are read-only, run off the UI thread, can be cancelled, and are bounded to 2,000 folders / 20,000 items / 300 displayed results. Partial searches and unreadable folders are labelled. No file search history, index or file contents are stored. This feature is **pending real-device QA** and is **not merged into main**.
+
+The full v0.2 scope and tests are in [docs/V0_2_FILE_TOOLS_PLAN.md](docs/V0_2_FILE_TOOLS_PLAN.md). Copy, bulk operations, duplicate detection and expanded large-file scanning remain planned; do not describe them as implemented.

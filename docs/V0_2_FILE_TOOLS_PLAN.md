@@ -2,7 +2,7 @@
 
 **Branch:** `feat/file-tools-v0-2`  
 **Base:** `main` (merged, tested v0.1 MVP).  
-**Status:** Planning/specification only. No features below should be marked implemented until code and real-device QA prove them. Keep this work in one draft PR until feature scope is reviewed. The separate `feat/advanced-tools` branch is independent, also based on `main`.
+**Status:** Milestone 1 (filename search and file-type filtering) implemented in the draft PR, pending device QA. Other milestones remain planned. Keep this work in one draft PR until user review. The separate `feat/advanced-tools` branch is independent, also based on `main`.
 
 ## Requested features and acceptance criteria
 
@@ -46,7 +46,7 @@
 
 ## Delivery order
 
-1. **Discovery milestone** — Search and file-type filtering, with pagination/progress, clear scope, cancellation and unit tests.
+1. **Discovery milestone (code implemented; device QA pending)** — Search and file-type filtering, with bounded results (up to 300), progress, clear scope, cancellation and unit tests.
 2. **Safe copy milestone** — Single-file copy and folder copy, destination selection, collision handling, tests.
 3. **Selection and bulk milestone** — Multi-select; bulk copy/move/delete with per-item progress, collision behavior and failure recovery.
 4. **Analysis milestone** — Large-file detection beyond Downloads and exact duplicate detection (read-only first; deletion only through shared reviewed bulk flow).
@@ -75,3 +75,30 @@ Implement incremental commits and keep the draft PR checklist honest. A feature 
 - [ ] SAF-only mode works inside selected tree, protected folders remain blocked.
 - [ ] No private paths in Settings logs or exports; expected name collisions aren't recorded as errors.
 - [ ] Build/test and Android debug APK succeed for PR head; regression checks pass on real device.
+
+## Milestone 1 implementation details
+
+Open **Files** and tap the **Search** icon in the top-right toolbar. A read-only search panel opens, offering:
+- **Name contains (optional)**: case-insensitive filename/folder-name match; leaving blank applies type filtering without a filename requirement. To find a particular extension, enter text such as `.pdf`.
+- **File type menu**: All types (includes folders), Images, Videos, Audio, Documents, Archives, APKs, Other (unrecognized/extensionless files). Uses MIME type when reliable, with known-extension fallback for generic or missing MIME.
+- **Include subfolders**: unchecked scans the current folder only. Checked scans recursively from the selected device-storage root (full access) or chosen SAF root (folder picker). The scope is labelled in the UI.
+- **Find files**: starts an on-demand scan on a background dispatcher; no saved index, search history, network access or automatic scanning.
+- **Cancel scan** or back/close search: interrupts the coroutine, does not show a cancellation error, and does not change any files. During scanning the UI shows folders/items visited; once complete it shows results with relative location, type and size.
+- **Tap result**: opens a file via the existing Android app chooser, or opens a found directory in the Files explorer with a valid folder breadcrumb route.
+
+**Bounded search:** at most 2,000 folders, 20,000 visited items and 300 displayed results per scan; limit hits are labelled incomplete. Unreadable provider folders are counted and a partial-results warning appears. Scan results are in memory only and are discarded when search closes or the folder changes. Results are not proof that the entire phone has been indexed.
+
+**Permissions:** Full-device scanning uses the existing checked shared-storage repository and skips symlinks/protected directories. SAF scans only children provided by the chosen tree provider. Do not infer access outside a granted tree.
+
+### Milestone 1 device QA (still outstanding)
+- [ ] Launch Files → Search from Device storage, then from a SAF-chosen folder. Both allow search and file-type filtering.
+- [ ] Search `cat` / `CAT` and verify case-insensitive matching, nonmatching files excluded, folders included under All types.
+- [ ] Switch the type category to Images and verify it excludes directories and PDFs; try Documents, APKs and Other, including extensionless files.
+- [ ] With **Include subfolders** off, a nested file is absent. Turn it on and verify a nested match appears with relative location.
+- [ ] Tap a matched folder to navigate into it and then Back; tap a matched file to open in another compatible app.
+- [ ] Launch a large recursive search and tap Cancel; it stops and does not log `StandaloneCoroutine was cancelled`.
+- [ ] Trigger a result limit or inaccessible folder (where safely possible) and ensure the UI labels results **incomplete** rather than claiming a complete search.
+- [ ] Repeat with storage permission revoked: SAF continues to work inside its grant; no protected folders or symlink escapes are traversed.
+- [ ] Verify scanning does not create, move, modify or delete any file; logging remains privacy-safe.
+- [ ] Confirm search remains usable on a narrow portrait device and in dark mode.
+
