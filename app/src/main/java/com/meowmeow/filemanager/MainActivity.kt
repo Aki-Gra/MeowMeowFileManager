@@ -1,0 +1,308 @@
+package com.meowmeow.filemanager
+
+import android.content.ActivityNotFoundException
+import android.content.Intent
+import android.net.Uri
+import java.io.IOException
+import android.os.Build
+import android.os.Bundle
+import android.os.Environment
+import android.provider.Settings
+import android.widget.Toast
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CleaningServices
+import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Storage
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.Icon
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.lifecycle.lifecycleScope
+import androidx.core.content.FileProvider
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.meowmeow.filemanager.diagnostics.ErrorArea
+import com.meowmeow.filemanager.diagnostics.ErrorOperation
+import com.meowmeow.filemanager.diagnostics.formatErrorLog
+import com.meowmeow.filemanager.diagnostics.suggestedErrorLogFileName
+import com.meowmeow.filemanager.model.FileEntry
+import com.meowmeow.filemanager.ui.CleanupScreen
+import com.meowmeow.filemanager.ui.CleanupViewModel
+import com.meowmeow.filemanager.ui.DeviceExplorerViewModel
+import com.meowmeow.filemanager.ui.ExplorerScreen
+import com.meowmeow.filemanager.ui.ExplorerViewModel
+import com.meowmeow.filemanager.ui.StorageOverviewScreen
+import com.meowmeow.filemanager.ui.SettingsScreen
+import com.meowmeow.filemanager.ui.theme.MeowMeowTheme
+import java.io.File
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+
+private enum class Page { FILES, STORAGE, CLEANUP, SETTINGS }
+
+class MainActivity : ComponentActivity() {
+    private var allFilesGranted by mutableStateOf(false)
+
+    override fun onResume() {
+        super.onResume()
+        allFilesGranted = canBrowseSharedStorage()
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        val errorLog = (application as MeowMeowApp).errorLog
+        val scoped = ViewModelProvider(
+            this, ExplorerViewModel.Factory(applicationContext)
+        )[ExplorerViewModel::class.java]
+        val device = ViewModelProvider(
+            this, DeviceExplorerViewModel.Factory(applicationContext)
+        )[DeviceExplorerViewModel::class.java]
+        val cleanup = ViewModelProvider(
+            this, CleanupViewModel.Factory(applicationContext)
+        )[CleanupViewModel::class.java]
+        val supported = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
+
+        setContent {
+            val scopedState by scoped.state.collectAsStateWithLifecycle()
+            val deviceState by device.state.collectAsStateWithLifecycle()
+            val cleanupState by cleanup.state.collectAsStateWithLifecycle()
+            val savedErrors by errorLog.entries.collectAsStateWithLifecycle()
+            val errorLoggingEnabled by errorLog.enabled.collectAsStateWithLifecycle()
+            var page by rememberSaveable { mutableStateOf(Page.FILES) }
+            var usingDevice by rememberSaveable { mutableStateOf(canBrowseSharedStorage()) }
+            // Save the exact private, sanitized report that existed when Export was tapped.
+            // Preserve across Activity recreation while the system Save dialog is open.
+            var pendingExportText by rememberSaveable { mutableStateOf<String?>(null) }
+            val exportPicker = rememberLauncherForActivityResult(
+                ActivityResultContracts.CreateDocument("text/plain")
+            ) { uri ->
+                val report = pendingExportText
+                pendingExportText = null
+                if (uri != null && report != null) {
+                    lifecycleScope.launch {
+                        try {
+                            withContext(Dispatchers.IO) {
+                                contentResolver.openOutputStream(uri, "wt")?.use { stream ->
+                                    stream.bufferedWriter(Charsets.UTF_8).use { writer ->
+                                        writer.write(report)
+                                    }
+                                } ?: throw IOException("Selected document is not writable")
+                            }
+                            Toast.makeText(this@MainActivity, "Error log exported", Toast.LENGTH_SHORT).show()
+                        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                            throw cancelled
+                        } catch (failure: Exception) {
+                            errorLog.record(ErrorArea.LOG_EXPORT, failure, operation = ErrorOperation.LOG_EXPORT)
+                            Toast.makeText(this@MainActivity, "Could not save error log", Toast.LENGTH_LONG).show()
+                        }
+                    }
+                }
+            }
+            val folderPicker = rememberLauncherForActivityResult(
+                ActivityResultContracts.OpenDocumentTree()
+            ) { uri ->
+                if (uri != null) {
+                    usingDevice = false
+                    page = Page.FILES
+                    scoped.chooseTree(uri)
+                }
+            }
+
+            LaunchedEffect(allFilesGranted) {
+                if (allFilesGranted) {
+                    device.openRoot()
+                    usingDevice = true
+                } else {
+                    usingDevice = false
+                }
+            }
+            LaunchedEffect(page, allFilesGranted) {
+                if (page == Page.CLEANUP && allFilesGranted) cleanup.scan()
+            }
+
+            val browseDevice = {
+                if (allFilesGranted) {
+                    usingDevice = true
+                    device.openRoot()
+                    page = Page.FILES
+                } else requestAllFilesAccess()
+            }
+            val browseDownloads = {
+                if (allFilesGranted) {
+                    usingDevice = true
+                    device.openDownloads()
+                    page = Page.FILES
+                } else requestAllFilesAccess()
+            }
+
+            MeowMeowTheme {
+                Scaffold(
+                    bottomBar = {
+                        NavigationBar {
+                            NavigationBarItem(
+                                selected = page == Page.FILES,
+                                onClick = {
+                                    if (page != Page.FILES && usingDevice && allFilesGranted) device.refresh()
+                                    page = Page.FILES
+                                },
+                                icon = { Icon(Icons.Default.Folder, contentDescription = null) },
+                                label = { Text("Files") }
+                            )
+                            NavigationBarItem(
+                                selected = page == Page.STORAGE,
+                                onClick = { page = Page.STORAGE },
+                                icon = { Icon(Icons.Default.Storage, contentDescription = null) },
+                                label = { Text("Storage") }
+                            )
+                            NavigationBarItem(
+                                selected = page == Page.CLEANUP,
+                                onClick = { page = Page.CLEANUP },
+                                icon = { Icon(Icons.Default.CleaningServices, contentDescription = null) },
+                                label = { Text("Cleanup") }
+                            )
+                            NavigationBarItem(
+                                selected = page == Page.SETTINGS,
+                                onClick = { page = Page.SETTINGS },
+                                icon = { Icon(Icons.Default.Settings, contentDescription = null) },
+                                label = { Text("Settings") }
+                            )
+                        }
+                    }
+                ) { padding ->
+                    Box(Modifier.fillMaxSize().padding(padding)) {
+                        when (page) {
+                            Page.FILES -> ExplorerScreen(
+                                state = if (usingDevice) deviceState else scopedState,
+                                onChooseFolder = { folderPicker.launch(null) },
+                                onOpenDirectory = { entry ->
+                                    if (usingDevice) device.openDirectory(entry) else scoped.openDirectory(entry)
+                                },
+                                onOpenFile = ::openFile,
+                                onNavigateUp = {
+                                    if (usingDevice) device.navigateUp() else scoped.navigateUp()
+                                },
+                                onRefresh = {
+                                    if (usingDevice) device.refresh() else scoped.refresh()
+                                },
+                                onSort = { mode ->
+                                    if (usingDevice) device.setSortMode(mode) else scoped.setSortMode(mode)
+                                },
+                                onCreateFolder = { name ->
+                                    if (usingDevice) device.createFolder(name) else scoped.createFolder(name)
+                                },
+                                onRename = { entry, name ->
+                                    if (usingDevice) device.rename(entry, name) else scoped.rename(entry, name)
+                                },
+                                onDelete = { entry ->
+                                    if (usingDevice) device.delete(entry) else scoped.delete(entry)
+                                },
+                                onDismissError = {
+                                    if (usingDevice) device.clearError() else scoped.clearError()
+                                },
+                                supportsFullAccess = supported,
+                                hasFullAccess = allFilesGranted,
+                                usingDevice = usingDevice,
+                                onRequestFullAccess = ::requestAllFilesAccess,
+                                onOpenDeviceStorage = browseDevice,
+                                onBrowseDownloads = browseDownloads
+                            )
+                            Page.STORAGE -> StorageOverviewScreen(
+                                hasFullAccess = allFilesGranted,
+                                supportsFullAccess = supported,
+                                onGrantAccess = ::requestAllFilesAccess,
+                                onBrowseDownloads = browseDownloads,
+                                onOpenCleanup = { page = Page.CLEANUP },
+                                onOpenSystemStorage = ::openSystemStorage
+                            )
+                            Page.SETTINGS -> SettingsScreen(
+                                loggingEnabled = errorLoggingEnabled,
+                                events = savedErrors,
+                                onSetLoggingEnabled = errorLog::setEnabled,
+                                onRecordTest = errorLog::recordTest,
+                                onExport = {
+                                    if (savedErrors.isNotEmpty()) {
+                                        pendingExportText = formatErrorLog(savedErrors)
+                                        exportPicker.launch(suggestedErrorLogFileName())
+                                    }
+                                },
+                                onClear = errorLog::clear
+                            )
+                            Page.CLEANUP -> CleanupScreen(
+                                state = cleanupState,
+                                hasFullAccess = allFilesGranted,
+                                supportsFullAccess = supported,
+                                onGrantAccess = ::requestAllFilesAccess,
+                                onScan = cleanup::scan,
+                                onToggle = cleanup::toggleSelected,
+                                onDelete = cleanup::deleteSelected,
+                                onDismissMessage = cleanup::clearMessage
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private fun canBrowseSharedStorage(): Boolean =
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && Environment.isExternalStorageManager()
+
+    private fun requestAllFilesAccess() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return
+        try {
+            startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
+                data = Uri.parse("package:" + packageName)
+            })
+        } catch (_: ActivityNotFoundException) {
+            startActivity(Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))
+        }
+    }
+
+    private fun openSystemStorage() {
+        try {
+            startActivity(Intent(Settings.ACTION_INTERNAL_STORAGE_SETTINGS))
+        } catch (_: ActivityNotFoundException) {
+            startActivity(Intent(Settings.ACTION_SETTINGS))
+        }
+    }
+
+    private fun openFile(entry: FileEntry) {
+        try {
+            val original = Uri.parse(entry.id)
+            val shareUri = if (original.scheme == "file") {
+                FileProvider.getUriForFile(
+                    this,
+                    packageName + ".fileprovider",
+                    File(requireNotNull(original.path))
+                )
+            } else original
+            val intent = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(shareUri, entry.mimeType ?: "*/*")
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            startActivity(Intent.createChooser(intent, "Open with"))
+        } catch (failure: ActivityNotFoundException) {
+            (application as MeowMeowApp).errorLog.record(ErrorArea.EXTERNAL_FILE_OPEN, failure, operation = ErrorOperation.EXTERNAL_OPEN)
+            Toast.makeText(this, "No app can open this file type", Toast.LENGTH_LONG).show()
+        } catch (failure: Exception) {
+            (application as MeowMeowApp).errorLog.record(ErrorArea.EXTERNAL_FILE_OPEN, failure, operation = ErrorOperation.EXTERNAL_OPEN)
+            Toast.makeText(this, "Unable to open this file", Toast.LENGTH_LONG).show()
+        }
+    }
+}

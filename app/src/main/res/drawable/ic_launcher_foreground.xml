@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <!-- Cat tail, tucked behind the folder -->
+    <path android:fillColor="#241040" android:pathData="M73,61 C76,52 83,45 90,43 C98,41 101,46 98,53 C96,59 88,61 84,66 L81,76 Z"/>
+    <path android:fillColor="#F8F6F5" android:pathData="M75,60 C78,53 84,47 91,46 C96,45 97,49 94,53 C91,58 86,57 82,65 Z"/>
+    <path android:fillColor="#B7ACBF" android:pathData="M88,47 C89,49 91,52 93,54 C91,56 89,57 87,58 C86,54 84,52 82,51 Z"/>
+    <!-- Ears and rounded cat face -->
+    <path android:fillColor="#241040" android:pathData="M28,48 C25,42 24,29 27,22 C29,17 34,18 40,23 L47,30 C52,29 56,29 62,30 L71,19 C75,14 81,17 83,23 C85,30 83,42 82,47 C86,60 78,67 67,68 L41,68 C28,66 22,59 28,48 Z"/>
+    <path android:fillColor="#FFFDF8" android:pathData="M30,46 C28,37 27,25 30,22 C33,19 40,28 46,33 C52,31 58,31 64,33 C72,22 78,18 80,24 C83,31 80,40 79,46 C85,58 75,65 66,65 L42,65 C30,64 26,57 30,46 Z"/>
+    <path android:fillColor="#F48AA9" android:pathData="M31,27 Q31,24 34,27 L41,35 L32,37 Z"/>
+    <path android:fillColor="#F48AA9" android:pathData="M77,24 Q78,25 78,29 L77,38 L68,35 Z"/>
+    <path android:fillColor="#B9B0C4" android:pathData="M53,32 C61,29 68,29 73,34 C75,37 70,40 62,39 C57,38 55,35 53,32 Z"/>
+    <!-- Eyes and smile -->
+    <path android:fillColor="@android:color/transparent" android:strokeColor="#241040"
+        android:strokeWidth="2.2" android:strokeLineCap="round"
+        android:pathData="M38,48 Q42,41 47,48"/>
+    <path android:fillColor="@android:color/transparent" android:strokeColor="#241040"
+        android:strokeWidth="2.2" android:strokeLineCap="round"
+        android:pathData="M61,48 Q66,41 70,48"/>
+    <path android:fillColor="#F48AA9" android:pathData="M52,49 Q55,46 58,49 Q58,51 55,53 Z"/>
+    <path android:fillColor="@android:color/transparent" android:strokeColor="#241040"
+        android:strokeWidth="1.9" android:strokeLineCap="round"
+        android:pathData="M55,53 Q52,58 48,53 M55,53 Q59,58 63,53"/>
+    <path android:fillColor="@android:color/transparent" android:strokeColor="#241040"
+        android:strokeWidth="1.6" android:strokeLineCap="round"
+        android:pathData="M33,53 L26,52 M33,56 L26,58 M73,53 L80,52 M73,56 L81,58"/>
+    <!-- Rear folder & visible file -->
+    <path android:fillColor="#241040" android:pathData="M20,57 Q20,53 25,53 L43,53 Q46,53 49,57 L85,57 Q90,57 90,62 L86,84 L23,84 Z"/>
+    <path android:fillColor="#F6A72A" android:pathData="M23,58 Q23,56 27,56 L42,56 Q45,56 47,60 L84,60 Q87,60 87,64 L84,81 L25,81 Z"/>
+    <path android:fillColor="#F8F1FF" android:pathData="M52,59 L77,59 Q81,59 81,63 L81,69 L52,69 Z"/>
+    <path android:fillColor="#C7B5F0" android:pathData="M55,62 L77,62 L77,69 L55,69 Z"/>
+    <!-- Paws resting on folder -->
+    <path android:fillColor="#241040" android:pathData="M38,55 C32,53 30,58 31,63 C31,67 35,69 40,68 C45,67 47,60 43,57 Q41,55 38,55 Z"/>
+    <path android:fillColor="#FFFDF8" android:pathData="M38,57 C34,55 33,61 34,64 Q36,67 39,65 L40,63 Q40,67 43,64 C46,60 42,56 38,57 Z"/>
+    <path android:fillColor="#241040" android:pathData="M68,55 C74,53 77,58 77,63 C77,67 73,69 68,68 C63,67 61,60 65,57 Q67,55 68,55 Z"/>
+    <path android:fillColor="#FFFDF8" android:pathData="M68,57 C72,55 75,60 74,64 Q72,67 69,65 L68,63 Q68,67 65,64 C62,60 65,56 68,57 Z"/>
+    <!-- Front golden folder with tab and dark outline -->
+    <path android:fillColor="#241040" android:pathData="M24,65 Q24,61 29,61 L47,61 Q51,61 54,66 L59,70 L84,70 Q89,70 88,76 L84,89 Q83,92 78,92 L29,92 Q24,92 23,87 Z"/>
+    <path android:fillColor="#FFBE35" android:pathData="M27,67 Q27,64 31,64 L46,64 Q49,64 52,68 L56,72 Q57,73 61,73 L82,73 Q85,73 85,77 L81,87 Q80,89 77,89 L30,89 Q27,89 26,85 Z"/>
+    <path android:fillColor="#FFE078" android:pathData="M29,69 Q30,66 33,66 L45,66 Q48,66 51,71 L55,75 Q57,77 62,77 L81,77"
+        android:strokeColor="#FFE078" android:strokeWidth="1.4" android:strokeLineCap="round"/>
+    <!-- Purple paw badge -->
+    <path android:fillColor="#381365" android:pathData="M48,84 C47,80 52,77 54,77 C57,77 62,81 61,84 C61,88 57,87 54,86 C51,87 49,88 48,84 Z"/>
+    <path android:fillColor="#381365" android:pathData="M47,77 A2.5,3 0,1 0,42,77 A2.5,3 0,1 0,47,77 Z"/>
+    <path android:fillColor="#381365" android:pathData="M53,75 A2.5,3 0,1 0,48,75 A2.5,3 0,1 0,53,75 Z"/>
+    <path android:fillColor="#381365" android:pathData="M61,75 A2.5,3 0,1 0,56,75 A2.5,3 0,1 0,61,75 Z"/>
+    <path android:fillColor="#381365" android:pathData="M67,77 A2.5,3 0,1 0,62,77 A2.5,3 0,1 0,67,77 Z"/>
+</vector>

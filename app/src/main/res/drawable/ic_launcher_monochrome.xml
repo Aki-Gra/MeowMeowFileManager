@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <!-- Single-color cat and folder for Android 13+ themed icons. -->
+    <path android:fillColor="#FFFFFFFF" android:pathData="M28,51 C25,43 24,29 28,22 C31,18 39,27 46,33 C52,31 58,31 64,33 C72,22 79,17 82,23 C85,30 82,43 80,49 C85,61 76,68 66,68 L42,68 C31,68 22,61 28,51 Z"/>
+    <path android:fillColor="#FFFFFFFF" android:pathData="M23,60 Q23,56 28,56 L44,56 Q48,56 50,61 L83,61 Q88,61 88,66 L85,83 L24,83 Z"/>
+    <path android:fillColor="#FFFFFFFF" android:pathData="M25,66 L46,66 Q49,66 53,72 L83,72 Q87,72 86,78 L82,89 Q82,92 77,92 L29,92 Q24,92 23,87 Z"/>
+    <path android:fillColor="#FFFFFFFF" android:pathData="M75,59 C79,48 87,42 94,44 C103,46 99,58 83,67 Z"/>
+</vector>
