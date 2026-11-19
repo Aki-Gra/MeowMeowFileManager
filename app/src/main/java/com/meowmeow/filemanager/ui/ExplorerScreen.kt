@@ -38,7 +38,6 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
@@ -71,6 +70,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.meowmeow.filemanager.model.FileEntry
 import com.meowmeow.filemanager.model.FileKind
+import com.meowmeow.filemanager.model.SearchScope
 import com.meowmeow.filemanager.model.detectFileKind
 import com.meowmeow.filemanager.model.SortMode
 import com.meowmeow.filemanager.model.isValidFileName
@@ -93,7 +93,7 @@ fun ExplorerScreen(
     onDelete: (FileEntry) -> Unit,
     onDismissError: () -> Unit,
     searchState: FileSearchState,
-    onSearch: (String, FileKind, Boolean) -> Unit,
+    onSearch: (String, FileKind, SearchScope) -> Unit,
     onCancelSearch: () -> Unit,
     onOpenSearchFolder: (FileSearchHit) -> Unit,
     supportsFullAccess: Boolean,
@@ -111,7 +111,8 @@ fun ExplorerScreen(
     var searchVisible by rememberSaveable { mutableStateOf(false) }
     var searchQuery by rememberSaveable { mutableStateOf("") }
     var searchKind by rememberSaveable { mutableStateOf(FileKind.ALL) }
-    var recursiveSearch by rememberSaveable { mutableStateOf(false) }
+    var searchScope by rememberSaveable { mutableStateOf(SearchScope.CURRENT_FOLDER) }
+    var scopeMenu by remember { mutableStateOf(false) }
     var typeMenu by remember { mutableStateOf(false) }
     val snackbar = remember { SnackbarHostState() }
 
@@ -221,7 +222,7 @@ fun ExplorerScreen(
                 ) {
                     OutlinedTextField(
                         value = searchQuery,
-                        onValueChange = { searchQuery = it },
+                        onValueChange = { searchQuery = it; onCancelSearch() },
                         label = { Text("Name contains (optional)") },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true
@@ -243,22 +244,71 @@ fun ExplorerScreen(
                                 FileKind.entries.forEach { type ->
                                     DropdownMenuItem(
                                         text = { Text(type.label) },
-                                        onClick = { searchKind = type; typeMenu = false }
+                                        onClick = {
+                                            searchKind = type
+                                            typeMenu = false
+                                            onCancelSearch()
+                                        }
                                     )
                                 }
                             }
                         }
-                        FilterChip(
-                            selected = recursiveSearch,
-                            onClick = { recursiveSearch = !recursiveSearch },
-                            label = { Text("Include subfolders") }
+                    }
+                    Text("Search location", style = MaterialTheme.typography.labelMedium)
+                    Box {
+                        AssistChip(
+                            onClick = { scopeMenu = true },
+                            label = {
+                                Text(
+                                    when (searchScope) {
+                                        SearchScope.CURRENT_FOLDER -> "Current folder only"
+                                        SearchScope.CURRENT_AND_SUBFOLDERS -> "Current folder + subfolders"
+                                        SearchScope.ROOT_AND_SUBFOLDERS ->
+                                            if (usingDevice) "Device storage root + subfolders"
+                                            else "Selected folder root + subfolders"
+                                    }
+                                )
+                            }
                         )
+                        DropdownMenu(
+                            expanded = scopeMenu,
+                            onDismissRequest = { scopeMenu = false }
+                        ) {
+                            SearchScope.entries.forEach { scope ->
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            when (scope) {
+                                                SearchScope.CURRENT_FOLDER -> "Current folder only"
+                                                SearchScope.CURRENT_AND_SUBFOLDERS ->
+                                                    "Current folder + subfolders"
+                                                SearchScope.ROOT_AND_SUBFOLDERS ->
+                                                    if (usingDevice) "Device storage root + subfolders"
+                                                    else "Selected folder root + subfolders"
+                                            }
+                                        )
+                                    },
+                                    onClick = {
+                                        scopeMenu = false
+                                        searchScope = scope
+                                        onCancelSearch()
+                                    }
+                                )
+                            }
+                        }
                     }
                     Text(
-                        if (recursiveSearch)
-                            "Scope: selected storage/folder root, including subfolders"
-                        else "Scope: current folder only",
-                        style = MaterialTheme.typography.labelSmall
+                        when (searchScope) {
+                            SearchScope.CURRENT_FOLDER ->
+                                "Search just the folder you're viewing."
+                            SearchScope.CURRENT_AND_SUBFOLDERS ->
+                                "Search this folder and all accessible folders inside it."
+                            SearchScope.ROOT_AND_SUBFOLDERS ->
+                                if (usingDevice)
+                                    "Search from the device storage root, including accessible subfolders."
+                                else "Search from the folder you selected in Android's picker, including its subfolders."
+                        },
+                        style = MaterialTheme.typography.bodySmall
                     )
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -266,7 +316,7 @@ fun ExplorerScreen(
                     ) {
                         Button(
                             enabled = !searchState.isRunning,
-                            onClick = { onSearch(searchQuery, searchKind, recursiveSearch) }
+                            onClick = { onSearch(searchQuery, searchKind, searchScope) }
                         ) { Text("Find files") }
                         if (searchState.isRunning) {
                             TextButton(onClick = onCancelSearch) { Text("Cancel scan") }

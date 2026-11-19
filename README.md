@@ -93,3 +93,7 @@ The launcher now uses a custom MeowMeow cat-and-folder icon: a white smiling cat
 On `feat/file-tools-v0-2`, Files has a new **Search** icon. Search can filter by filename and file category, either in the current directory or recursively from the chosen storage root. Scans are read-only, run off the UI thread, can be cancelled, and are bounded to 2,000 folders / 20,000 items / 300 displayed results. Partial searches and unreadable folders are labelled. No file search history, index or file contents are stored. This feature is **pending real-device QA** and is **not merged into main**.
 
 The full v0.2 scope and tests are in [docs/V0_2_FILE_TOOLS_PLAN.md](docs/V0_2_FILE_TOOLS_PLAN.md). Copy, bulk operations, duplicate detection and expanded large-file scanning remain planned; do not describe them as implemented.
+
+### Explicit search locations
+
+Search has three choices: **Current folder only**, **Current folder + subfolders**, and **Device storage root + subfolders** (labelled **Selected folder root + subfolders** when using the Android folder picker). The previous **Include subfolders** toggle has been removed because it misleadingly searched from the root rather than the current directory.

@@ -11,6 +11,8 @@ import com.meowmeow.filemanager.diagnostics.ErrorLogStore
 import com.meowmeow.filemanager.data.LocalFileRepository
 import com.meowmeow.filemanager.model.FileEntry
 import com.meowmeow.filemanager.model.FileKind
+import com.meowmeow.filemanager.model.SearchScope
+import com.meowmeow.filemanager.model.searchStartFolder
 import com.meowmeow.filemanager.model.FileDiscoveryScanner
 import com.meowmeow.filemanager.model.SortMode
 import com.meowmeow.filemanager.model.sortFiles
@@ -150,13 +152,13 @@ class DeviceExplorerViewModel(
     }
 
     /** Search current folder or the selected device-storage root. Read-only. */
-    fun startSearch(query: String, kind: FileKind, recursive: Boolean) {
+    fun startSearch(query: String, kind: FileKind, scope: SearchScope) {
         cancelSearch()
         if (!repository.hasAccess()) {
             _search.value = FileSearchState(notice = "Grant file access before searching.")
             return
         }
-        val scope = (if (recursive) folders.firstOrNull() else folders.lastOrNull()) ?: return
+        val startFolder = searchStartFolder(folders.firstOrNull(), folders.lastOrNull(), scope) ?: return
         searchJob = viewModelScope.launch {
             _search.value = FileSearchState(isRunning = true)
             val outcome = resultUnlessCancelled {
@@ -168,7 +170,7 @@ class DeviceExplorerViewModel(
                                 runCatching { entry to repository.fromEntry(entry) }.getOrNull()
                             }
                         }
-                    ).scan(scope, recursive, query, kind, onProgress = { visited, examined ->
+                    ).scan(startFolder, scope.recursive, query, kind, onProgress = { visited, examined ->
                         withContext(Dispatchers.Main) {
                             _search.value = _search.value.copy(
                                 foldersVisited = visited, entriesVisited = examined

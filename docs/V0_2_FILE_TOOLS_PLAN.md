@@ -7,7 +7,7 @@
 ## Requested features and acceptance criteria
 
 ### 1. Search (filename)
-- Search filenames and folder names case-insensitively in a clearly indicated scope: current folder or selected root (recursive).
+- Search filenames and folder names case-insensitively with three explicit scopes: current folder only; current folder and its subfolders; selected storage root and its subfolders.
 - Results show file type, size and relative location; tapping opens the file or parent folder.
 - User can cancel a recursive scan. No network access, private search history or automatic indexing.
 - Never traverse Android-protected folders, external volumes not granted, or symlinks outside a selected root. For SAF, search only within the chosen granted tree.
@@ -81,7 +81,7 @@ Implement incremental commits and keep the draft PR checklist honest. A feature 
 Open **Files** and tap the **Search** icon in the top-right toolbar. A read-only search panel opens, offering:
 - **Name contains (optional)**: case-insensitive filename/folder-name match; leaving blank applies type filtering without a filename requirement. To find a particular extension, enter text such as `.pdf`.
 - **File type menu**: All types (includes folders), Images, Videos, Audio, Documents, Archives, APKs, Other (unrecognized/extensionless files). Uses MIME type when reliable, with known-extension fallback for generic or missing MIME.
-- **Include subfolders**: unchecked scans the current folder only. Checked scans recursively from the selected device-storage root (full access) or chosen SAF root (folder picker). The scope is labelled in the UI.
+- **Search location**: explicit menu with **Current folder only**, **Current folder + subfolders**, and **Device storage root + subfolders** (or **Selected folder root + subfolders** for SAF). Choosing current-folder recursive scope never silently moves the scan to the root.
 - **Find files**: starts an on-demand scan on a background dispatcher; no saved index, search history, network access or automatic scanning.
 - **Cancel scan** or back/close search: interrupts the coroutine, does not show a cancellation error, and does not change any files. During scanning the UI shows folders/items visited; once complete it shows results with relative location, type and size.
 - **Tap result**: opens a file via the existing Android app chooser, or opens a found directory in the Files explorer with a valid folder breadcrumb route.
@@ -94,7 +94,7 @@ Open **Files** and tap the **Search** icon in the top-right toolbar. A read-only
 - [ ] Launch Files → Search from Device storage, then from a SAF-chosen folder. Both allow search and file-type filtering.
 - [ ] Search `cat` / `CAT` and verify case-insensitive matching, nonmatching files excluded, folders included under All types.
 - [ ] Switch the type category to Images and verify it excludes directories and PDFs; try Documents, APKs and Other, including extensionless files.
-- [ ] With **Include subfolders** off, a nested file is absent. Turn it on and verify a nested match appears with relative location.
+- [ ] From a nested folder, compare all three Search location choices: current only excludes nested files; current + subfolders finds only the current subtree; device/selected root + subfolders also finds matching files outside the current subtree. Check both direct storage and SAF.
 - [ ] Tap a matched folder to navigate into it and then Back; tap a matched file to open in another compatible app.
 - [ ] Launch a large recursive search and tap Cancel; it stops and does not log `StandaloneCoroutine was cancelled`.
 - [ ] Trigger a result limit or inaccessible folder (where safely possible) and ensure the UI labels results **incomplete** rather than claiming a complete search.
@@ -102,3 +102,12 @@ Open **Files** and tap the **Search** icon in the top-right toolbar. A read-only
 - [ ] Verify scanning does not create, move, modify or delete any file; logging remains privacy-safe.
 - [ ] Confirm search remains usable on a narrow portrait device and in dark mode.
 
+
+### Scope selector clarification
+
+The misleading **Include subfolders** switch was replaced with a **Search location** selector. The three options determine both the starting folder and recursion. Default: **Current folder only**. Changing the location, file-type filter or query clears stale results; users must tap **Find files** again. Device mode labels the root as **Device storage root**; SAF mode labels it **Selected folder root** so it never suggests permission to search outside the chosen tree.
+
+- [ ] Search inside a deeply nested folder: **Current folder + subfolders** must never return matches in sibling folders.
+- [ ] **Root + subfolders** must include permitted sibling locations and preserve usable navigation to matched folders.
+- [ ] **Current folder only** must match just direct children.
+- [ ] Change location with results showing; old results clear before the next scan. Confirm all 3 choices fit on a narrow phone screen.

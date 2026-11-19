@@ -13,6 +13,8 @@ import com.meowmeow.filemanager.diagnostics.ErrorLogStore
 import com.meowmeow.filemanager.data.DocumentRepository
 import com.meowmeow.filemanager.model.FileEntry
 import com.meowmeow.filemanager.model.FileKind
+import com.meowmeow.filemanager.model.SearchScope
+import com.meowmeow.filemanager.model.searchStartFolder
 import com.meowmeow.filemanager.model.FileDiscoveryScanner
 import com.meowmeow.filemanager.model.SortMode
 import com.meowmeow.filemanager.model.sortFiles
@@ -180,9 +182,9 @@ class ExplorerViewModel(
     }
 
     /** Only traverses the user's explicitly selected and persisted SAF tree. */
-    fun startSearch(query: String, kind: FileKind, recursive: Boolean) {
+    fun startSearch(query: String, kind: FileKind, scope: SearchScope) {
         cancelSearch()
-        val scope = (if (recursive) folders.firstOrNull() else folders.lastOrNull())?.file ?: return
+        val startFolder = searchStartFolder(folders.firstOrNull(), folders.lastOrNull(), scope)?.file ?: return
         searchJob = viewModelScope.launch {
             _search.value = FileSearchState(isRunning = true)
             val outcome = resultUnlessCancelled {
@@ -190,7 +192,7 @@ class ExplorerViewModel(
                     FileDiscoveryScanner<DocumentFile>(
                         identity = { it.uri.toString() },
                         listChildren = { folder -> repository.listChildren(folder) }
-                    ).scan(scope, recursive, query, kind, onProgress = { visited, examined ->
+                    ).scan(startFolder, scope.recursive, query, kind, onProgress = { visited, examined ->
                         withContext(Dispatchers.Main) {
                             _search.value = _search.value.copy(
                                 foldersVisited = visited, entriesVisited = examined
