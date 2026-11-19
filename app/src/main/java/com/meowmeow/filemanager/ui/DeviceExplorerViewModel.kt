@@ -214,9 +214,14 @@ class DeviceExplorerViewModel(
             _state.value = _state.value.copy(errorMessage = "This folder is no longer accessible.")
             return
         }
+        val fullRoute = when (route.firstOrNull()) {
+            folders.firstOrNull() -> route
+            folders.lastOrNull() -> folders.dropLast(1) + route
+            else -> return
+        }
         cancelSearch()
         folders.clear()
-        folders.addAll(route)
+        folders.addAll(fullRoute)
         loadFolder()
     }
 

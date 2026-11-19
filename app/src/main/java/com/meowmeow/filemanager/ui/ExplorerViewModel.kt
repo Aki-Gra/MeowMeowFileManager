@@ -230,14 +230,18 @@ class ExplorerViewModel(
 
     fun openSearchFolder(hit: FileSearchHit) {
         val route = searchRoutes[hit.entry.id]?.toList() ?: return
-        if (route.firstOrNull()?.uri != folders.firstOrNull()?.file?.uri ||
-            route.lastOrNull()?.uri.toString() != hit.entry.id) {
+        val fullRoute = when (route.firstOrNull()?.uri) {
+            folders.firstOrNull()?.file?.uri -> route
+            folders.lastOrNull()?.file?.uri -> folders.dropLast(1).map { it.file } + route
+            else -> emptyList()
+        }
+        if (fullRoute.isEmpty() || fullRoute.lastOrNull()?.uri.toString() != hit.entry.id) {
             _state.value = _state.value.copy(errorMessage = "This folder is no longer accessible.")
             return
         }
         cancelSearch()
         folders.clear()
-        folders.addAll(route.mapIndexed { index, folder ->
+        folders.addAll(fullRoute.mapIndexed { index, folder ->
             FolderLevel(if (index == 0) folder.name ?: "Selected folder"
                 else folder.name ?: "Folder", folder)
         })

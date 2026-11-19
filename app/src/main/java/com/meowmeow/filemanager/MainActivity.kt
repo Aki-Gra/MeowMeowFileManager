@@ -81,6 +81,8 @@ class MainActivity : ComponentActivity() {
         setContent {
             val scopedState by scoped.state.collectAsStateWithLifecycle()
             val deviceState by device.state.collectAsStateWithLifecycle()
+            val deviceSearch by device.search.collectAsStateWithLifecycle()
+            val scopedSearch by scoped.search.collectAsStateWithLifecycle()
             val cleanupState by cleanup.state.collectAsStateWithLifecycle()
             val savedErrors by errorLog.entries.collectAsStateWithLifecycle()
             val errorLoggingEnabled by errorLog.enabled.collectAsStateWithLifecycle()
@@ -214,6 +216,18 @@ class MainActivity : ComponentActivity() {
                                 },
                                 onDismissError = {
                                     if (usingDevice) device.clearError() else scoped.clearError()
+                                },
+                                searchState = if (usingDevice) deviceSearch else scopedSearch,
+                                onSearch = { query, kind, recursive ->
+                                    if (usingDevice) device.startSearch(query, kind, recursive)
+                                    else scoped.startSearch(query, kind, recursive)
+                                },
+                                onCancelSearch = {
+                                    if (usingDevice) device.cancelSearch() else scoped.cancelSearch()
+                                },
+                                onOpenSearchFolder = { hit ->
+                                    if (usingDevice) device.openSearchFolder(hit)
+                                    else scoped.openSearchFolder(hit)
                                 },
                                 supportsFullAccess = supported,
                                 hasFullAccess = allFilesGranted,

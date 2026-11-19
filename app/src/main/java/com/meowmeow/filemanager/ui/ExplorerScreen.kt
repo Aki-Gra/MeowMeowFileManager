@@ -30,7 +30,13 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Sort
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
@@ -61,6 +67,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.meowmeow.filemanager.model.FileEntry
+import com.meowmeow.filemanager.model.FileKind
+import com.meowmeow.filemanager.model.detectFileKind
 import com.meowmeow.filemanager.model.SortMode
 import com.meowmeow.filemanager.model.isValidFileName
 import java.text.DateFormat
@@ -81,6 +89,10 @@ fun ExplorerScreen(
     onRename: (FileEntry, String) -> Unit,
     onDelete: (FileEntry) -> Unit,
     onDismissError: () -> Unit,
+    searchState: FileSearchState,
+    onSearch: (String, FileKind, Boolean) -> Unit,
+    onCancelSearch: () -> Unit,
+    onOpenSearchFolder: (FileSearchHit) -> Unit,
     supportsFullAccess: Boolean,
     hasFullAccess: Boolean,
     usingDevice: Boolean,
@@ -93,9 +105,19 @@ fun ExplorerScreen(
     var deleteTarget by remember { mutableStateOf<FileEntry?>(null) }
     var sortMenu by remember { mutableStateOf(false) }
     var optionsMenu by remember { mutableStateOf(false) }
+    var searchVisible by rememberSaveable { mutableStateOf(false) }
+    var searchQuery by rememberSaveable { mutableStateOf("") }
+    var searchKind by rememberSaveable { mutableStateOf(FileKind.ALL) }
+    var recursiveSearch by rememberSaveable { mutableStateOf(false) }
+    var typeMenu by remember { mutableStateOf(false) }
     val snackbar = remember { SnackbarHostState() }
 
-    BackHandler(enabled = state.path.size > 1, onBack = onNavigateUp)
+    BackHandler(enabled = searchVisible || state.path.size > 1, onBack = {
+        if (searchVisible) {
+            searchVisible = false
+            onCancelSearch()
+        } else onNavigateUp()
+    })
     LaunchedEffect(state.errorMessage) {
         state.errorMessage?.let {
             snackbar.showSnackbar(it)
@@ -128,6 +150,15 @@ fun ExplorerScreen(
                     }
                 },
                 actions = {
+                    if (state.hasRoot) {
+                        IconButton(onClick = {
+                            searchVisible = !searchVisible
+                            onCancelSearch()
+                        }) {
+                            Icon(if (searchVisible) Icons.Default.Close else Icons.Default.Search,
+                                contentDescription = if (searchVisible) "Close search" else "Search files")
+                        }
+                    }
                     if (state.hasRoot || supportsFullAccess) {
                         if (state.hasRoot) {
                             IconButton(onClick = onRefresh) {
@@ -174,6 +205,131 @@ fun ExplorerScreen(
         }
     ) { innerPadding ->
         when {
+            searchVisible && state.hasRoot -> {
+                Column(
+                    modifier = Modifier.fillMaxSize().padding(innerPadding)
+                        .padding(horizontal = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedTextField(
+                        value = searchQuery,
+                        onValueChange = { searchQuery = it },
+                        label = { Text("Name contains (optional)") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Box {
+                            AssistChip(
+                                onClick = { typeMenu = true },
+                                label = { Text(searchKind.label) }
+                            )
+                            DropdownMenu(
+                                expanded = typeMenu,
+                                onDismissRequest = { typeMenu = false }
+                            ) {
+                                FileKind.entries.forEach { type ->
+                                    DropdownMenuItem(
+                                        text = { Text(type.label) },
+                                        onClick = { searchKind = type; typeMenu = false }
+                                    )
+                                }
+                            }
+                        }
+                        FilterChip(
+                            selected = recursiveSearch,
+                            onClick = { recursiveSearch = !recursiveSearch },
+                            label = { Text("Include subfolders") }
+                        )
+                    }
+                    Text(
+                        if (recursiveSearch)
+                            "Scope: selected storage/folder root, including subfolders"
+                        else "Scope: current folder only",
+                        style = MaterialTheme.typography.labelSmall
+                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Button(
+                            enabled = !searchState.isRunning,
+                            onClick = { onSearch(searchQuery, searchKind, recursiveSearch) }
+                        ) { Text("Find files") }
+                        if (searchState.isRunning) {
+                            TextButton(onClick = onCancelSearch) { Text("Cancel scan") }
+                        }
+                    }
+                    if (searchState.isRunning) {
+                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                    }
+                    if (searchState.isRunning || searchState.finished) {
+                        Text(
+                            if (searchState.isRunning)
+                                "Scanning: ${searchState.entriesVisited} items / ${searchState.foldersVisited} folders"
+                            else "${searchState.hits.size} matches in ${searchState.entriesVisited} items",
+                            style = MaterialTheme.typography.labelLarge
+                        )
+                    }
+                    if (searchState.truncated || searchState.unreadableFolders > 0) {
+                        Text(
+                            buildString {
+                                if (searchState.truncated) append("Result/scan limit reached. Results are incomplete. ")
+                                if (searchState.unreadableFolders > 0)
+                                    append("${searchState.unreadableFolders} folders were unreadable.")
+                            },
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                    searchState.notice?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                    if (searchState.finished && searchState.hits.isEmpty()) {
+                        Text(
+                            if (searchState.truncated || searchState.unreadableFolders > 0)
+                                "No matches in the folders scanned."
+                            else "No matching files found.",
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                    }
+                    LazyColumn(
+                        modifier = Modifier.weight(1f),
+                        contentPadding = PaddingValues(bottom = 24.dp)
+                    ) {
+                        items(searchState.hits, key = { it.entry.id }) { hit ->
+                            ListItem(
+                                modifier = Modifier.fillMaxWidth().clickable {
+                                    if (hit.entry.isDirectory) {
+                                        onOpenSearchFolder(hit)
+                                        searchVisible = false
+                                    } else onOpenFile(hit.entry)
+                                },
+                                leadingContent = {
+                                    Icon(
+                                        if (hit.entry.isDirectory) Icons.Default.Folder
+                                        else Icons.Default.InsertDriveFile,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
+                                },
+                                headlineContent = {
+                                    Text(hit.entry.name, maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis)
+                                },
+                                supportingContent = {
+                                    Text(
+                                        if (hit.entry.isDirectory) "Folder · ${hit.location}"
+                                        else "${detectFileKind(hit.entry).label} · ${formatSize(hit.entry.sizeBytes)} · ${hit.location}",
+                                        maxLines = 2, overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            )
+                        }
+                    }
+                }
+            }
             state.isLoading && state.entries.isEmpty() -> {
                 Box(Modifier.fillMaxSize().padding(innerPadding), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator()
