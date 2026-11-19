@@ -11,6 +11,8 @@ import com.meowmeow.filemanager.diagnostics.ErrorArea
 import com.meowmeow.filemanager.diagnostics.ErrorOperation
 import com.meowmeow.filemanager.diagnostics.ErrorLogStore
 import com.meowmeow.filemanager.data.DocumentRepository
+import com.meowmeow.filemanager.data.CopyNode
+import com.meowmeow.filemanager.data.CopyPlace
 import com.meowmeow.filemanager.model.FileEntry
 import com.meowmeow.filemanager.model.FileKind
 import com.meowmeow.filemanager.model.SearchScope
@@ -249,6 +251,26 @@ class ExplorerViewModel(
         })
         children = emptyMap()
         loadFolder()
+    }
+
+    fun copySelection(entry: FileEntry): CopyPlace? {
+        if (_state.value.entries.none { it.id == entry.id }) return null
+        val file = children[entry.id] ?: return null
+        val root = folders.firstOrNull()?.file ?: return null
+        return CopyPlace(
+            CopyNode.Scoped(file), root.uri.toString(),
+            folders.map { it.file.uri.toString() }
+        )
+    }
+
+    fun copyDestination(): CopyPlace? {
+        if (!_state.value.canCreateFolder) return null
+        val file = currentFolder() ?: return null
+        val root = folders.firstOrNull()?.file ?: return null
+        return CopyPlace(
+            CopyNode.Scoped(file), root.uri.toString(),
+            folders.map { it.file.uri.toString() }
+        )
     }
 
     fun clearError() { _state.value = _state.value.copy(errorMessage = null) }

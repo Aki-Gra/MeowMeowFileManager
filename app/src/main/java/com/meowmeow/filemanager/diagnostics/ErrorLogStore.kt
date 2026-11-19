@@ -16,7 +16,7 @@ enum class ErrorArea {
     SCOPED_FOLDER_PICKER, SCOPED_BROWSING, SCOPED_FILE_OPERATION,
     DEVICE_BROWSING, DEVICE_FILE_OPERATION, CLEANUP_SCAN, CLEANUP_DELETE,
     STORAGE_OVERVIEW, EXTERNAL_FILE_OPEN, APP_CRASH, DIAGNOSTICS_TEST,
-    LOG_EXPORT
+    LOG_EXPORT, COPY_OPERATION
 }
 /**
  * Stable, non-sensitive action identifiers. Do not reuse or rename shipped codes:
@@ -30,6 +30,9 @@ enum class ErrorOperation(val code: String, val title: String) {
     SAF_CREATE("SAF-MKDIR", "Create folder (SAF)"),
     SAF_RENAME("SAF-REN", "Rename item (SAF)"),
     SAF_DELETE("SAF-DEL", "Delete item (SAF)"),
+    FS_COPY("FS-COPY", "Copy device files"),
+    SAF_COPY("SAF-COPY", "Copy files in chosen folder"),
+    COPY_BETWEEN("COPY-MIX", "Copy between storage modes"),
     FS_OPEN_FOLDER("FS-OPEN", "Open folder"),
     FS_LIST("FS-LIST", "List device folder"),
     FS_CREATE("FS-MKDIR", "Create device folder"),

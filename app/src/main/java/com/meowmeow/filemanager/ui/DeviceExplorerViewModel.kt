@@ -9,6 +9,8 @@ import com.meowmeow.filemanager.diagnostics.ErrorArea
 import com.meowmeow.filemanager.diagnostics.ErrorOperation
 import com.meowmeow.filemanager.diagnostics.ErrorLogStore
 import com.meowmeow.filemanager.data.LocalFileRepository
+import com.meowmeow.filemanager.data.CopyNode
+import com.meowmeow.filemanager.data.CopyPlace
 import com.meowmeow.filemanager.model.FileEntry
 import com.meowmeow.filemanager.model.FileKind
 import com.meowmeow.filemanager.model.SearchScope
@@ -225,6 +227,21 @@ class DeviceExplorerViewModel(
         folders.clear()
         folders.addAll(fullRoute)
         loadFolder()
+    }
+
+    fun copySelection(entry: FileEntry): CopyPlace? {
+        if (_state.value.entries.none { it.id == entry.id }) return null
+        return runCatching {
+            CopyPlace(CopyNode.Device(repository.fromEntry(entry)),
+                "device", folders.map { it.path })
+        }.getOrNull()
+    }
+
+    fun copyDestination(): CopyPlace? {
+        if (!repository.hasAccess() || !_state.value.canCreateFolder) return null
+        return runCatching {
+            CopyPlace(CopyNode.Device(current()), "device", folders.map { it.path })
+        }.getOrNull()
     }
 
     fun clearError() { _state.value = _state.value.copy(errorMessage = null) }
