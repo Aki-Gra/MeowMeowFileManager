@@ -21,6 +21,9 @@ class SafeCopyTest {
     }
 
     private class MemOps : CopyOperations<Node> {
+        var corruptDestRead = false
+        var failDestWrite = false
+        private val createdFiles = mutableSetOf<Node>()
         override fun name(item: Node) = item.name
         override fun isDirectory(item: Node) = item.folder
         override fun mime(item: Node): String? = "application/octet-stream"
@@ -32,10 +35,16 @@ class SafeCopyTest {
         override fun createFolder(parent: Node, name: String) =
             Node(name, true).also { parent.children.add(it) }
         override fun createFile(parent: Node, name: String, mime: String?) =
-            Node(name, false).also { parent.children.add(it) }
+            Node(name, false).also { parent.children.add(it); createdFiles.add(it) }
         override fun read(file: Node): InputStream =
-            ByteArrayInputStream(if (file.corruptRead) byteArrayOf(0x00) else file.bytes)
+            ByteArrayInputStream(if (file.corruptRead || (corruptDestRead && file in createdFiles))
+                byteArrayOf(0x00) else file.bytes)
         override fun write(file: Node): OutputStream = object : ByteArrayOutputStream() {
+            override fun write(b: ByteArray, off: Int, len: Int) {
+                if (failDestWrite && file in createdFiles)
+                    throw IOException("Simulated write interruption")
+                super.write(b, off, len)
+            }
             override fun close() {
                 super.close()
                 file.bytes = toByteArray()
@@ -102,6 +111,28 @@ class SafeCopyTest {
         }
         assertTrue(target.children.isEmpty())
         assertEquals(1, source.children.size)
+    }
+
+    @Test fun corruptedDestinationIsRejectedAndRemoved() {
+        val source = Node("important.pdf", false, byteArrayOf(1, 2, 3))
+        val destination = Node("dst", true)
+        val ops = MemOps().apply { root = destination; corruptDestRead = true }
+        assertThrows(IOException::class.java) {
+            runBlocking { SafeCopy(ops).perform(source, destination) }
+        }
+        assertTrue(destination.children.isEmpty())
+        assertArrayEquals(byteArrayOf(1, 2, 3), source.bytes)
+    }
+
+    @Test fun failedWriteDoesNotLeavePartialFile() {
+        val source = Node("important.pdf", false, byteArrayOf(3, 2, 1))
+        val destination = Node("dst", true)
+        val ops = MemOps().apply { root = destination; failDestWrite = true }
+        assertThrows(IOException::class.java) {
+            runBlocking { SafeCopy(ops).perform(source, destination) }
+        }
+        assertTrue(destination.children.isEmpty())
+        assertArrayEquals(byteArrayOf(3, 2, 1), source.bytes)
     }
 
     @Test fun recursiveCycleRollsBack() {

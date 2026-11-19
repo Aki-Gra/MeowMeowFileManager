@@ -47,7 +47,7 @@
 ## Delivery order
 
 1. **Discovery milestone (code implemented; device QA pending)** — Search and file-type filtering, with bounded results (up to 300), progress, clear scope, cancellation and unit tests.
-2. **Safe copy milestone** — Single-file copy and folder copy, destination selection, collision handling, tests.
+2. **Safe copy milestone (implemented in code; device QA pending)** — Single-file and folder copy, in-explorer destination navigation, collision handling, SHA-256 verification, cancellation/rollback, automated tests.
 3. **Selection and bulk milestone** — Multi-select; bulk copy/move/delete with per-item progress, collision behavior and failure recovery.
 4. **Analysis milestone** — Large-file detection beyond Downloads and exact duplicate detection (read-only first; deletion only through shared reviewed bulk flow).
 5. **Final integration milestone** — Real-device regression and QA, fresh debug APK, updated docs, PR review and only then merge into `main`.
@@ -111,3 +111,31 @@ The misleading **Include subfolders** switch was replaced with a **Search locati
 - [ ] **Root + subfolders** must include permitted sibling locations and preserve usable navigation to matched folders.
 - [ ] **Current folder only** must match just direct children.
 - [ ] Change location with results showing; old results clear before the next scan. Confirm all 3 choices fit on a narrow phone screen.
+
+
+## Milestone 2 — single file and folder copy (code implemented, device QA pending)
+
+**How to use:** Open **Files**, tap an item's **⋮** menu and choose **Copy** (including read-only source items). Navigate to the folder where the copy should go, then tap **Paste here** in the persistent copy bar. The bar shows the source name, progress and **Discard** / **Cancel copy**.
+
+**Behavior and safety**
+- Copy, not move: **the original item is never deleted**. File bytes stream through a fixed 64 KiB buffer off the UI thread; files are verified by SHA-256 against destination read-back. No entire file is loaded into memory.
+- Default conflict policy is **do not overwrite**. If the same name exists at the destination, the app shows a validation message; the existing file remains unchanged and no expected-conflict diagnostic entry is created. Choose a different destination or discard.
+- Folder copies preserve their relative directory structure, with limits of 10,000 entries and depth 48. Self/descendant destinations are prohibited.
+- The app tracks every newly created item and cleans up only those items, in reverse order, if copying is cancelled, verification fails or another error occurs. If cleanup cannot finish, the app warns that an incomplete copy may remain.
+- Single-file copies can cross between full-device and SAF modes, provided both are authorized. **Folder copies require the same storage mode and the same selected root**, avoiding ambiguous directory ancestry and accidental self-copy across Android providers. This is a deliberate first-stage restriction.
+- All storage operations revalidate access when executed. Full-device paths are restricted to primary shared storage and must not be symlinks; SAF only uses provider handles from previously granted trees.
+- Clipboard stays in memory for the lifetime of the app process, and is not persisted or shared. The app never transfers any files over the network.
+- Genuine copy failures use sanitized diagnostic operation codes; common duplicate-name and invalid-destination cases are actionable validation messages instead.
+
+**Device QA — mandatory before milestone is accepted**
+- [ ] Copy a disposable TXT, PDF and image into another folder in **Device storage**; confirm the original remains and the new file opens with identical content.
+- [ ] Copy a small folder with nested subfolders and several files; confirm folder hierarchy and bytes are preserved.
+- [ ] Use **Choose another folder** (SAF) and copy a file within the granted tree. Copy a file between SAF and Device storage in both directions where Android permits it.
+- [ ] Attempt to paste where an item with that name already exists. It must never overwrite/replace the existing item, and it must not add an expected error to the log.
+- [ ] Try to paste a folder into itself or one of its descendants. The app must refuse without creating files.
+- [ ] Select a large disposable file, start copying, tap **Cancel copy**. Check no partial destination item is left; original remains intact.
+- [ ] Revoke permission during copy or simulate a provider write failure with test files. Copy must fail safely and report if any incomplete item could not be cleaned.
+- [ ] Copy a read-only source to a writable destination. If the source is not readable, show a friendly failure without changing it.
+- [ ] Check the copy bar, button disabled state, progress, back navigation, small portrait phone and dark mode.
+- [ ] Confirm Settings logs do not contain file names, full paths, stack traces or raw I/O exception messages.
+- [ ] Test previous Search, Storage, Cleanup, rename, delete and Settings features for regressions.

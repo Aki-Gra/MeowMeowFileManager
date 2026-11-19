@@ -97,3 +97,8 @@ The full v0.2 scope and tests are in [docs/V0_2_FILE_TOOLS_PLAN.md](docs/V0_2_FI
 ### Explicit search locations
 
 Search has three choices: **Current folder only**, **Current folder + subfolders**, and **Device storage root + subfolders** (labelled **Selected folder root + subfolders** when using the Android folder picker). The previous **Include subfolders** toggle has been removed because it misleadingly searched from the root rather than the current directory.
+
+
+## v0.2 milestone 2 — Copy (device QA pending)
+
+On the v0.2 feature branch, Files → item menu → **Copy** selects a file or folder. Navigate within Files and choose **Paste here**. This is intentionally non-destructive: overwrite is blocked, original files are retained, each file is SHA-256 verified and an interrupted copy attempts to remove only the items it created. Single files can be copied across direct/SAF access modes where permission allows; folder copy is restricted to the same storage mode and selected root. See [v0.2 plan](docs/V0_2_FILE_TOOLS_PLAN.md) for limits and QA steps. This feature is not yet merged to main or approved through real-device QA.
