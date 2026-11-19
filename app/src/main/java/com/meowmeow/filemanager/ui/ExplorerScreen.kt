@@ -21,6 +21,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AudioFile
 import androidx.compose.material.icons.filled.CreateNewFolder
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Edit
@@ -49,6 +50,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
@@ -91,6 +93,11 @@ fun ExplorerScreen(
     onCreateFolder: (String) -> Unit,
     onRename: (FileEntry, String) -> Unit,
     onDelete: (FileEntry) -> Unit,
+    onCopy: (FileEntry) -> Unit,
+    copyState: CopyUiState,
+    onPaste: () -> Unit,
+    onCopyCancel: () -> Unit,
+    onDismissCopyNotice: () -> Unit,
     onDismissError: () -> Unit,
     searchState: FileSearchState,
     onSearch: (String, FileKind, SearchScope) -> Unit,
@@ -133,9 +140,48 @@ fun ExplorerScreen(
             onDismissError()
         }
     }
+    LaunchedEffect(copyState.notice) {
+        copyState.notice?.let {
+            snackbar.showSnackbar(it)
+            onDismissCopyNotice()
+        }
+    }
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbar) },
+        bottomBar = {
+            if (copyState.sourceName != null) {
+                Surface(tonalElevation = 3.dp) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text("Copy: " + copyState.sourceName,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis,
+                            style = MaterialTheme.typography.titleSmall)
+                        if (copyState.isCopying) {
+                            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                            Text("Copied " + copyState.filesCopied + " file(s) · " +
+                                copyState.foldersCopied + " folder(s)",
+                                style = MaterialTheme.typography.bodySmall)
+                        } else {
+                            Text("Navigate to the destination, then tap Paste here.",
+                                style = MaterialTheme.typography.bodySmall)
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalAlignment = Alignment.CenterVertically) {
+                            Button(
+                                enabled = !copyState.isCopying && state.hasRoot && state.canCreateFolder,
+                                onClick = onPaste
+                            ) { Text("Paste here") }
+                            TextButton(onClick = onCopyCancel) {
+                                Text(if (copyState.isCopying) "Cancel copy" else "Discard")
+                            }
+                        }
+                    }
+                }
+            }
+        },
         topBar = {
             TopAppBar(
                 title = {
@@ -464,7 +510,8 @@ fun ExplorerScreen(
                                     entry = entry,
                                     onOpen = { if (entry.isDirectory) onOpenDirectory(entry) else onOpenFile(entry) },
                                     onRename = { renameTarget = entry },
-                                    onDelete = { deleteTarget = entry }
+                                    onDelete = { deleteTarget = entry },
+                                    onCopy = { onCopy(entry) }
                                 )
                             }
                         }
@@ -512,7 +559,8 @@ private fun FileRow(
     entry: FileEntry,
     onOpen: () -> Unit,
     onRename: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onCopy: () -> Unit
 ) {
     var menuExpanded by remember(entry.id) { mutableStateOf(false) }
     ListItem(
@@ -549,7 +597,6 @@ private fun FileRow(
             )
         },
         trailingContent = {
-            if (entry.canWrite) {
                 Box {
                     IconButton(onClick = { menuExpanded = true }) {
                         Icon(Icons.Default.MoreVert, contentDescription = "Actions for ${entry.name}")
@@ -559,18 +606,22 @@ private fun FileRow(
                         onDismissRequest = { menuExpanded = false }
                     ) {
                         DropdownMenuItem(
+                            text = { Text("Copy") },
+                            leadingIcon = { Icon(Icons.Default.ContentCopy, contentDescription = null) },
+                            onClick = { menuExpanded = false; onCopy() }
+                        )
+                        if (entry.canWrite) DropdownMenuItem(
                             text = { Text("Rename") },
                             leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null) },
                             onClick = { menuExpanded = false; onRename() }
                         )
-                        DropdownMenuItem(
+                        if (entry.canWrite) DropdownMenuItem(
                             text = { Text("Delete") },
                             leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null) },
                             onClick = { menuExpanded = false; onDelete() }
                         )
                     }
                 }
-            }
         }
     )
 }

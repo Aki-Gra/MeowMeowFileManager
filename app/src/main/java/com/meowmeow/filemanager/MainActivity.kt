@@ -43,6 +43,7 @@ import com.meowmeow.filemanager.diagnostics.suggestedErrorLogFileName
 import com.meowmeow.filemanager.model.FileEntry
 import com.meowmeow.filemanager.ui.CleanupScreen
 import com.meowmeow.filemanager.ui.CleanupViewModel
+import com.meowmeow.filemanager.ui.CopyViewModel
 import com.meowmeow.filemanager.ui.DeviceExplorerViewModel
 import com.meowmeow.filemanager.ui.ExplorerScreen
 import com.meowmeow.filemanager.ui.ExplorerViewModel
@@ -76,6 +77,9 @@ class MainActivity : ComponentActivity() {
         val cleanup = ViewModelProvider(
             this, CleanupViewModel.Factory(applicationContext)
         )[CleanupViewModel::class.java]
+        val copy = ViewModelProvider(
+            this, CopyViewModel.Factory(applicationContext)
+        )[CopyViewModel::class.java]
         val supported = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
 
         setContent {
@@ -84,6 +88,7 @@ class MainActivity : ComponentActivity() {
             val deviceSearch by device.search.collectAsStateWithLifecycle()
             val scopedSearch by scoped.search.collectAsStateWithLifecycle()
             val cleanupState by cleanup.state.collectAsStateWithLifecycle()
+            val copyState by copy.state.collectAsStateWithLifecycle()
             val savedErrors by errorLog.entries.collectAsStateWithLifecycle()
             val errorLoggingEnabled by errorLog.enabled.collectAsStateWithLifecycle()
             var page by rememberSaveable { mutableStateOf(Page.FILES) }
@@ -214,6 +219,25 @@ class MainActivity : ComponentActivity() {
                                 onDelete = { entry ->
                                     if (usingDevice) device.delete(entry) else scoped.delete(entry)
                                 },
+                                onCopy = { entry ->
+                                    copy.select(
+                                        if (usingDevice) device.copySelection(entry)
+                                        else scoped.copySelection(entry),
+                                        entry.name
+                                    )
+                                },
+                                copyState = copyState,
+                                onPaste = {
+                                    val destinationModeIsDevice = usingDevice
+                                    val destination = if (destinationModeIsDevice)
+                                        device.copyDestination() else scoped.copyDestination()
+                                    copy.paste(destination) {
+                                        if (destinationModeIsDevice) device.refresh()
+                                        else scoped.refresh()
+                                    }
+                                },
+                                onCopyCancel = copy::cancelOrClear,
+                                onDismissCopyNotice = copy::dismissNotice,
                                 onDismissError = {
                                     if (usingDevice) device.clearError() else scoped.clearError()
                                 },
