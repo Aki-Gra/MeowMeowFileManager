@@ -41,6 +41,7 @@ import com.meowmeow.filemanager.diagnostics.ErrorOperation
 import com.meowmeow.filemanager.diagnostics.formatErrorLog
 import com.meowmeow.filemanager.diagnostics.suggestedErrorLogFileName
 import com.meowmeow.filemanager.model.FileEntry
+import com.meowmeow.filemanager.reader.ReaderActivity
 import com.meowmeow.filemanager.ui.CleanupScreen
 import com.meowmeow.filemanager.ui.CleanupViewModel
 import com.meowmeow.filemanager.ui.DeviceExplorerViewModel
@@ -282,27 +283,32 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /**
+     * Files open inside the app first. Never dispatch ACTION_VIEW until the
+     * user deliberately taps "Open with…" in ReaderActivity.
+     */
     private fun openFile(entry: FileEntry) {
         try {
             val original = Uri.parse(entry.id)
-            val shareUri = if (original.scheme == "file") {
+            val readUri = if (original.scheme == "file") {
                 FileProvider.getUriForFile(
                     this,
                     packageName + ".fileprovider",
                     File(requireNotNull(original.path))
                 )
             } else original
-            val intent = Intent(Intent.ACTION_VIEW).apply {
-                setDataAndType(shareUri, entry.mimeType ?: "*/*")
+            val readerIntent = Intent(this, ReaderActivity::class.java).apply {
+                setDataAndType(readUri, entry.mimeType ?: "application/octet-stream")
+                putExtra(ReaderActivity.EXTRA_NAME, entry.name)
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
-            startActivity(Intent.createChooser(intent, "Open with"))
-        } catch (failure: ActivityNotFoundException) {
-            (application as MeowMeowApp).errorLog.record(ErrorArea.EXTERNAL_FILE_OPEN, failure, operation = ErrorOperation.EXTERNAL_OPEN)
-            Toast.makeText(this, "No app can open this file type", Toast.LENGTH_LONG).show()
+            startActivity(readerIntent)
         } catch (failure: Exception) {
-            (application as MeowMeowApp).errorLog.record(ErrorArea.EXTERNAL_FILE_OPEN, failure, operation = ErrorOperation.EXTERNAL_OPEN)
-            Toast.makeText(this, "Unable to open this file", Toast.LENGTH_LONG).show()
+            (application as MeowMeowApp).errorLog.record(
+                ErrorArea.DOCUMENT_READER, failure,
+                operation = ErrorOperation.READER_OPEN
+            )
+            Toast.makeText(this, "Unable to preview this file", Toast.LENGTH_LONG).show()
         }
     }
 }

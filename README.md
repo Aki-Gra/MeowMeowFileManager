@@ -87,3 +87,17 @@ Duplicate names and invalid filenames during folder creation or renaming are **n
 ## MeowMeow app icon
 
 The launcher now uses a custom MeowMeow cat-and-folder icon: a white smiling cat resting on a golden folder, with a purple paw print and purple background. The adaptive foreground is an Android vector drawable, not a bitmap, so it scales across device densities. Resources include adaptive launcher icons for Android 8+, a round icon alias, and a simplified Android 13+ monochrome resource for themed icons. No extra permission or app data changes are required.
+
+## In-app document reader (advanced feature branch)
+
+Files now open **inside MeowMeow by default**, without sending them to the browser, Google Drive or another reader. The dedicated, non-exported ReaderActivity supports:
+
+- **PDF**: native on-device page rendering via Android PdfRenderer, next/previous page controls and zoom. Password-protected and some damaged PDFs may not open.
+- **TXT, JSON, XML, Markdown, CSV, TSV, YAML, LOG, HTML source and similar text files**: scrollable, selectable, read-only text viewer, font-size controls and UTF-8/UTF-16 BOM detection.
+- **DOCX and ODT**: text extraction from the local zipped XML document, not full Word formatting/images/layout.
+- **Legacy .DOC**: read-only text extraction using Apache POI HWPF (poi-scratchpad), not Word formatting/images/layout. Android-device validation is particularly important for .doc compatibility.
+- **Unsupported / corrupt files**: a safe in-app message, not an automatic chooser. Another app opens **only** after a deliberate **Open with…** tap.
+
+Document reading is offline with no network permission. Content is read on Dispatchers.IO and guarded with input/output limits. PDF pages render with bounded bitmap sizes, and temporary cache copies (required for some non-seekable document providers) are deleted after use. No file is modified in the reader. Reader errors use privacy-safe error logging codes without filenames or paths.
+
+**Reader limitations:** Word and ODT display extracted text only, not native page layout. Very large, encrypted, malformed, or unusual documents may be refused with an explanation. PDF text is page-rendered, not selectable/searchable in this initial release; other reader enhancements can follow QA.

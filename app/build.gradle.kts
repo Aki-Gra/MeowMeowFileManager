@@ -15,8 +15,8 @@ android {
         applicationId = "com.meowmeow.filemanager"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "0.2.0-reader-preview"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -38,6 +38,8 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.11.0")
     implementation("androidx.documentfile:documentfile:1.1.0")
     implementation("androidx.core:core:1.17.0")
+    // HWPF provides offline text extraction for legacy Word .doc files.
+    implementation("org.apache.poi:poi-scratchpad:5.5.1")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
     testImplementation("junit:junit:4.13.2")
