@@ -175,12 +175,15 @@ class AndroidCopyOperations(context: Context) : CopyOperations<CopyNode> {
         is CopyNode.Device -> {
             // Delete exactly the path created by the copy, never recursively walk it.
             val file = local.checkedForCopy(item.file)
-            !Files.exists(file.toPath(), LinkOption.NOFOLLOW_LINKS) ||
+            Files.notExists(file.toPath(), LinkOption.NOFOLLOW_LINKS) ||
                 Files.deleteIfExists(file.toPath())
         }
         is CopyNode.Scoped -> {
             val file = item.file
-            if (!file.exists()) true
+            // SAF exists() can return false when permission is revoked,
+            // not only when the file was removed. Never claim cleanup success
+            // unless the provider confirms deletion.
+            if (!file.exists()) false
             else if (file.isDirectory && file.listFiles().isNotEmpty()) false
             else file.delete()
         }
