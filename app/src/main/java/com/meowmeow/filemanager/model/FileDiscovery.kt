@@ -27,7 +27,8 @@ fun detectFileKind(entry: FileEntry): FileKind {
     if (mime.startsWith("video/")) return FileKind.VIDEOS
     if (mime.startsWith("audio/")) return FileKind.AUDIO
     if (mime in setOf("application/zip", "application/x-7z-compressed", "application/x-rar-compressed",
-            "application/x-tar", "application/gzip", "application/x-gzip", "application/x-bzip2"))
+            "application/x-tar", "application/gzip", "application/x-gzip", "application/x-bzip2",
+            "application/vnd.rar", "application/x-zip-compressed", "application/x-compressed-tar"))
         return FileKind.ARCHIVES
     if (mime.startsWith("text/") ||
         mime in setOf("application/pdf", "application/json", "application/xml", "application/epub+zip") ||

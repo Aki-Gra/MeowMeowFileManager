@@ -17,6 +17,7 @@ class FileDiscoveryTest {
         assertEquals(FileKind.DOCUMENTS, detectFileKind(entry("spreadsheet.xlsx", null)))
         assertEquals(FileKind.DOCUMENTS, detectFileKind(entry("report", "application/pdf")))
         assertEquals(FileKind.ARCHIVES, detectFileKind(entry("files.zip", "application/zip")))
+        assertEquals(FileKind.ARCHIVES, detectFileKind(entry("files.rar", "application/vnd.rar")))
         assertEquals(FileKind.APKS, detectFileKind(entry("app.apk", null)))
         assertEquals(FileKind.OTHER, detectFileKind(entry("unknown")))
         assertEquals(FileKind.OTHER, detectFileKind(entry("folder", directory = true)))

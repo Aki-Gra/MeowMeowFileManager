@@ -57,6 +57,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.Button
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -111,6 +112,11 @@ fun ExplorerScreen(
     var recursiveSearch by rememberSaveable { mutableStateOf(false) }
     var typeMenu by remember { mutableStateOf(false) }
     val snackbar = remember { SnackbarHostState() }
+
+    // Leaving Files (for Storage, Cleanup or Settings) must also stop scans.
+    DisposableEffect(Unit) {
+        onDispose { onCancelSearch() }
+    }
 
     BackHandler(enabled = searchVisible || state.path.size > 1, onBack = {
         if (searchVisible) {

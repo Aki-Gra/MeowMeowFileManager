@@ -164,8 +164,8 @@ class DeviceExplorerViewModel(
                     FileDiscoveryScanner<File>(
                         identity = { it.path },
                         listChildren = { folder ->
-                            repository.listChildren(folder).map { entry ->
-                                entry to repository.fromEntry(entry)
+                            repository.listChildren(folder).mapNotNull { entry ->
+                                runCatching { entry to repository.fromEntry(entry) }.getOrNull()
                             }
                         }
                     ).scan(scope, recursive, query, kind, onProgress = { visited, examined ->
