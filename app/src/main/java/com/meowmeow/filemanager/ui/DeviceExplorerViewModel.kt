@@ -10,15 +10,17 @@ import com.meowmeow.filemanager.diagnostics.ErrorOperation
 import com.meowmeow.filemanager.diagnostics.ErrorLogStore
 import com.meowmeow.filemanager.data.LocalFileRepository
 import com.meowmeow.filemanager.model.FileEntry
+import com.meowmeow.filemanager.model.FileKind
+import com.meowmeow.filemanager.model.FileDiscoveryScanner
 import com.meowmeow.filemanager.model.SortMode
 import com.meowmeow.filemanager.model.sortFiles
 import java.io.File
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 /** A separate direct-file backend. The original SAF browser remains available as a fallback. */
 class DeviceExplorerViewModel(
@@ -29,8 +31,13 @@ class DeviceExplorerViewModel(
     private var scanJob: Job? = null
     private val _state = MutableStateFlow(ExplorerUiState(isLoading = false))
     val state: StateFlow<ExplorerUiState> = _state
+    private val _search = MutableStateFlow(FileSearchState())
+    val search: StateFlow<FileSearchState> = _search
+    private var searchJob: Job? = null
+    private val searchRoutes = mutableMapOf<String, List<File>>()
 
     fun openRoot() {
+        cancelSearch()
         if (!repository.hasAccess()) {
             _state.value = ExplorerUiState(isLoading = false)
             return
@@ -41,6 +48,7 @@ class DeviceExplorerViewModel(
     }
 
     fun openDownloads() {
+        cancelSearch()
         if (!repository.hasAccess()) return
         folders.clear()
         folders.add(repository.root())
@@ -50,6 +58,7 @@ class DeviceExplorerViewModel(
 
     fun openDirectory(entry: FileEntry) {
         if (!entry.isDirectory) return
+        cancelSearch()
         val target = runCatching { repository.fromEntry(entry) }
             .onFailure { errorLog.record(ErrorArea.DEVICE_BROWSING, it, operation = ErrorOperation.FS_OPEN_FOLDER) }
             .getOrNull() ?: return
@@ -60,11 +69,13 @@ class DeviceExplorerViewModel(
 
     fun navigateUp() {
         if (folders.size < 2) return
+        cancelSearch()
         folders.removeAt(folders.lastIndex)
         loadFolder()
     }
 
     fun refresh() {
+        cancelSearch()
         if (folders.isEmpty()) openRoot() else loadFolder()
     }
 
@@ -136,6 +147,77 @@ class DeviceExplorerViewModel(
                 )
             }
         }
+    }
+
+    /** Search current folder or the selected device-storage root. Read-only. */
+    fun startSearch(query: String, kind: FileKind, recursive: Boolean) {
+        cancelSearch()
+        if (!repository.hasAccess()) {
+            _search.value = FileSearchState(notice = "Grant file access before searching.")
+            return
+        }
+        val scope = (if (recursive) folders.firstOrNull() else folders.lastOrNull()) ?: return
+        searchJob = viewModelScope.launch {
+            _search.value = FileSearchState(isRunning = true)
+            val outcome = resultUnlessCancelled {
+                withContext(Dispatchers.IO) {
+                    FileDiscoveryScanner<File>(
+                        identity = { it.path },
+                        listChildren = { folder ->
+                            repository.listChildren(folder).map { entry ->
+                                entry to repository.fromEntry(entry)
+                            }
+                        }
+                    ).scan(scope, recursive, query, kind, onProgress = { visited, examined ->
+                        withContext(Dispatchers.Main) {
+                            _search.value = _search.value.copy(
+                                foldersVisited = visited, entriesVisited = examined
+                            )
+                        }
+                    })
+                }
+            }
+            outcome.onSuccess { result ->
+                searchRoutes.clear()
+                result.matches.filter { it.entry.isDirectory }.forEach {
+                    searchRoutes[it.entry.id] = it.folderTrail
+                }
+                _search.value = FileSearchState(
+                    finished = true,
+                    hits = result.matches.map { FileSearchHit(it.entry, it.location) },
+                    foldersVisited = result.foldersVisited,
+                    entriesVisited = result.entriesVisited,
+                    unreadableFolders = result.unreadableFolders,
+                    truncated = result.truncated
+                )
+            }.onFailure {
+                errorLog.record(ErrorArea.DEVICE_BROWSING, it, operation = ErrorOperation.FS_SEARCH)
+                _search.value = FileSearchState(
+                    finished = true, notice = "Search could not be completed."
+                )
+            }
+        }
+    }
+
+    fun cancelSearch() {
+        searchJob?.cancel()
+        searchJob = null
+        searchRoutes.clear()
+        _search.value = FileSearchState()
+    }
+
+    fun openSearchFolder(hit: FileSearchHit) {
+        val route = searchRoutes[hit.entry.id]?.toList() ?: return
+        if (!repository.hasAccess()) return
+        val target = runCatching { repository.fromEntry(hit.entry) }.getOrNull()
+        if (target == null || !target.isDirectory || route.lastOrNull() != target) {
+            _state.value = _state.value.copy(errorMessage = "This folder is no longer accessible.")
+            return
+        }
+        cancelSearch()
+        folders.clear()
+        folders.addAll(route)
+        loadFolder()
     }
 
     fun clearError() { _state.value = _state.value.copy(errorMessage = null) }

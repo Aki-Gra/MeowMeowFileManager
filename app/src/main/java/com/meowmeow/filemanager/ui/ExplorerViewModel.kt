@@ -12,14 +12,16 @@ import com.meowmeow.filemanager.diagnostics.ErrorOperation
 import com.meowmeow.filemanager.diagnostics.ErrorLogStore
 import com.meowmeow.filemanager.data.DocumentRepository
 import com.meowmeow.filemanager.model.FileEntry
+import com.meowmeow.filemanager.model.FileKind
+import com.meowmeow.filemanager.model.FileDiscoveryScanner
 import com.meowmeow.filemanager.model.SortMode
 import com.meowmeow.filemanager.model.sortFiles
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 data class ExplorerUiState(
     val hasRoot: Boolean = false,
@@ -44,6 +46,10 @@ class ExplorerViewModel(
 
     private val _state = MutableStateFlow(ExplorerUiState())
     val state: StateFlow<ExplorerUiState> = _state
+    private val _search = MutableStateFlow(FileSearchState())
+    val search: StateFlow<FileSearchState> = _search
+    private var searchJob: Job? = null
+    private val searchRoutes = mutableMapOf<String, List<DocumentFile>>()
 
     init {
         selectionJob = viewModelScope.launch {
@@ -62,6 +68,7 @@ class ExplorerViewModel(
     }
 
     fun chooseTree(uri: Uri) {
+        cancelSearch()
         selectionJob?.cancel()
         scanJob?.cancel()
         selectionJob = viewModelScope.launch {
@@ -78,6 +85,7 @@ class ExplorerViewModel(
     }
 
     private fun enterRoot(root: DocumentFile) {
+        cancelSearch()
         folders.clear()
         folders += FolderLevel(root.name ?: "Selected folder", root)
         children = emptyMap()
@@ -86,6 +94,7 @@ class ExplorerViewModel(
 
     fun openDirectory(entry: FileEntry) {
         val file = children[entry.id] ?: return
+        cancelSearch()
         if (!file.isDirectory) return
         folders += FolderLevel(entry.name, file)
         loadFolder()
@@ -93,11 +102,15 @@ class ExplorerViewModel(
 
     fun navigateUp() {
         if (folders.size <= 1) return
+        cancelSearch()
         folders.removeAt(folders.lastIndex)
         loadFolder()
     }
 
-    fun refresh() = loadFolder()
+    fun refresh() {
+        cancelSearch()
+        loadFolder()
+    }
 
     fun setSortMode(mode: SortMode) {
         _state.value = _state.value.copy(
@@ -164,6 +177,72 @@ class ExplorerViewModel(
                 _state.value = _state.value.copy(isLoading = false, errorMessage = friendlyError(it))
             }
         }
+    }
+
+    /** Only traverses the user's explicitly selected and persisted SAF tree. */
+    fun startSearch(query: String, kind: FileKind, recursive: Boolean) {
+        cancelSearch()
+        val scope = (if (recursive) folders.firstOrNull() else folders.lastOrNull())?.file ?: return
+        searchJob = viewModelScope.launch {
+            _search.value = FileSearchState(isRunning = true)
+            val outcome = resultUnlessCancelled {
+                withContext(Dispatchers.IO) {
+                    FileDiscoveryScanner<DocumentFile>(
+                        identity = { it.uri.toString() },
+                        listChildren = { folder -> repository.listChildren(folder) }
+                    ).scan(scope, recursive, query, kind, onProgress = { visited, examined ->
+                        withContext(Dispatchers.Main) {
+                            _search.value = _search.value.copy(
+                                foldersVisited = visited, entriesVisited = examined
+                            )
+                        }
+                    })
+                }
+            }
+            outcome.onSuccess { result ->
+                searchRoutes.clear()
+                result.matches.filter { it.entry.isDirectory }.forEach {
+                    searchRoutes[it.entry.id] = it.folderTrail
+                }
+                _search.value = FileSearchState(
+                    finished = true,
+                    hits = result.matches.map { FileSearchHit(it.entry, it.location) },
+                    foldersVisited = result.foldersVisited,
+                    entriesVisited = result.entriesVisited,
+                    unreadableFolders = result.unreadableFolders,
+                    truncated = result.truncated
+                )
+            }.onFailure {
+                errorLog.record(ErrorArea.SCOPED_BROWSING, it, operation = ErrorOperation.SAF_SEARCH)
+                _search.value = FileSearchState(
+                    finished = true, notice = "Search could not be completed."
+                )
+            }
+        }
+    }
+
+    fun cancelSearch() {
+        searchJob?.cancel()
+        searchJob = null
+        searchRoutes.clear()
+        _search.value = FileSearchState()
+    }
+
+    fun openSearchFolder(hit: FileSearchHit) {
+        val route = searchRoutes[hit.entry.id]?.toList() ?: return
+        if (route.firstOrNull()?.uri != folders.firstOrNull()?.file?.uri ||
+            route.lastOrNull()?.uri.toString() != hit.entry.id) {
+            _state.value = _state.value.copy(errorMessage = "This folder is no longer accessible.")
+            return
+        }
+        cancelSearch()
+        folders.clear()
+        folders.addAll(route.mapIndexed { index, folder ->
+            FolderLevel(if (index == 0) folder.name ?: "Selected folder"
+                else folder.name ?: "Folder", folder)
+        })
+        children = emptyMap()
+        loadFolder()
     }
 
     fun clearError() { _state.value = _state.value.copy(errorMessage = null) }

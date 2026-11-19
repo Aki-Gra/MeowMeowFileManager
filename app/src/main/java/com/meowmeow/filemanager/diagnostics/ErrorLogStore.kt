@@ -35,6 +35,8 @@ enum class ErrorOperation(val code: String, val title: String) {
     FS_CREATE("FS-MKDIR", "Create device folder"),
     FS_RENAME("FS-REN", "Rename device item"),
     FS_DELETE("FS-DEL", "Delete device item"),
+    FS_SEARCH("FS-SEARCH", "Search device storage"),
+    SAF_SEARCH("SAF-SEARCH", "Search chosen folder"),
     CLEANUP_SCAN("CLN-SCAN", "Scan large downloads"),
     CLEANUP_DELETE("CLN-DEL", "Delete selected download"),
     STORAGE_READ("STO-READ", "Read storage information"),
