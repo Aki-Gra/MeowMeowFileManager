@@ -46,6 +46,9 @@ class SafeCopy<T>(private val op: CopyOperations<T>) {
         validateRequestedName(name)
         rejectExistingName(op.contains(destinationFolder, name))
         var created: T? = null
+        // Track exactly what this operation created. Never recursively delete
+        // unrelated files that appeared in the destination while copying.
+        val createdItems = arrayListOf<T>()
         var totals = CopyTotals(0, 0, 0L)
         var visited = 0
         val identifiers = hashSetOf<String>()
@@ -54,6 +57,7 @@ class SafeCopy<T>(private val op: CopyOperations<T>) {
             created = if (op.isDirectory(source))
                 op.createFolder(destinationFolder, name)
             else op.createFile(destinationFolder, name, op.mime(source))
+            createdItems.add(requireNotNull(created))
 
             suspend fun visit(input: T, output: T, depth: Int) {
                 currentCoroutineContext().ensureActive()
@@ -72,6 +76,7 @@ class SafeCopy<T>(private val op: CopyOperations<T>) {
                         val newChild = if (op.isDirectory(child))
                             op.createFolder(output, childName)
                         else op.createFile(output, childName, op.mime(child))
+                        createdItems.add(newChild)
                         visit(child, newChild, depth + 1)
                     }
                 } else {
@@ -121,12 +126,13 @@ class SafeCopy<T>(private val op: CopyOperations<T>) {
             // A failed copy must not be reported as successful. The source is
             // never touched. If cleanup fails, warn that the destination may
             // contain an incomplete item instead of claiming rollback.
-            val item = created
-            if (item != null) {
-                val cleared = try { op.removeCreated(item) } catch (_: Exception) { false }
-                if (!cleared)
-                    throw IOException("Incomplete copy may remain in destination. Review it before retrying.", failure)
+            var cleaned = true
+            for (item in createdItems.asReversed()) {
+                val removed = try { op.removeCreated(item) } catch (_: Exception) { false }
+                if (!removed) cleaned = false
             }
+            if (!cleaned)
+                throw IOException("Incomplete copy may remain in destination. Review it before retrying.", failure)
             throw failure
         }
     }
