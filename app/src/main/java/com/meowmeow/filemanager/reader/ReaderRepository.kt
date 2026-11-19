@@ -32,7 +32,13 @@ class ReaderRepository(private val context: Context) {
                 }
                 ReaderFormat.DOC -> {
                     val bytes = DocumentTextExtractor.readLimited(source, MAX_WORD_BYTES)
-                    WordExtractor(ByteArrayInputStream(bytes)).use { it.text }
+                    // Some Android vendors omit Java classes used by POI internals.
+                    // A missing optional class must show an error, not crash the app.
+                    try {
+                        WordExtractor(ByteArrayInputStream(bytes)).use { it.text }
+                    } catch (failure: LinkageError) {
+                        throw IOException("Legacy Word document reader is unavailable.", failure)
+                    }
                 }
                 else -> throw IllegalArgumentException("Not a text document.")
             }
@@ -57,6 +63,10 @@ class ReaderRepository(private val context: Context) {
             } ?: throw IOException("No readable PDF file descriptor.")
         }
         originalResult.getOrNull()?.let { return it }
+        // A deliberate safety limit is not a reason to copy and retry a large file.
+        originalResult.exceptionOrNull()?.let { failure ->
+            if (failure is ReaderLimitException) throw failure
+        }
 
         // Fallback: use app-private cache only, never external storage.
         val temp = File.createTempFile("reader-", ".pdf", context.cacheDir)
@@ -97,6 +107,7 @@ class ReaderRepository(private val context: Context) {
             require(count > 0) { "Empty PDF document" }
             require(pageIndex < count) { "Page number is out of range" }
             renderer.openPage(pageIndex).use { page ->
+                require(page.width > 0 && page.height > 0) { "Invalid PDF page dimensions." }
                 val requested = targetWidthPx.coerceIn(300, MAX_RENDER_WIDTH)
                 val scale = min(
                     requested.toDouble() / page.width.toDouble(),

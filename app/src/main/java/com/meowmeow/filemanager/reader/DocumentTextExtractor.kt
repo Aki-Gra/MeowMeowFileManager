@@ -32,6 +32,12 @@ internal object DocumentTextExtractor {
             }
             extracted ?: throw IOException("Document text part was not found.")
         }
+        val xmlPreview = String(xml, Charsets.UTF_8)
+        if (xmlPreview.contains("<!DOCTYPE", ignoreCase = true) ||
+            xmlPreview.contains("<!ENTITY", ignoreCase = true)
+        ) {
+            throw IOException("XML entity declarations are not supported.")
+        }
         return extractXmlText(ByteArrayInputStream(xml), format)
     }
 

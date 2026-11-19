@@ -1,6 +1,7 @@
 package com.meowmeow.filemanager.reader
 
 import android.content.ActivityNotFoundException
+import android.content.ClipData
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
@@ -54,6 +55,7 @@ class ReaderActivity : ComponentActivity() {
         try {
             val external = Intent(Intent.ACTION_VIEW).apply {
                 setDataAndType(uri, mime ?: "application/octet-stream")
+                clipData = ClipData.newUri(contentResolver, "MeowMeow document", uri)
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
             startActivity(Intent.createChooser(external, "Open with another app"))
