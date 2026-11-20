@@ -22,6 +22,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AudioFile
 import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Edit
@@ -36,6 +37,7 @@ import androidx.compose.material.icons.filled.Sort
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -71,6 +73,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.meowmeow.filemanager.model.FileEntry
+import com.meowmeow.filemanager.model.BulkAction
 import com.meowmeow.filemanager.model.FileKind
 import com.meowmeow.filemanager.model.SearchScope
 import com.meowmeow.filemanager.model.detectFileKind
@@ -98,6 +101,19 @@ fun ExplorerScreen(
     onPaste: () -> Unit,
     onCopyCancel: () -> Unit,
     onDismissCopyNotice: () -> Unit,
+    bulkState: BulkUiState,
+    onBulkStart: () -> Unit,
+    onBulkToggle: (FileEntry) -> Unit,
+    onBulkSelectAll: (List<FileEntry>) -> Unit,
+    onBulkClear: () -> Unit,
+    onBulkLeave: () -> Unit,
+    onBulkAction: (BulkAction) -> Unit,
+    onBulkPaste: () -> Unit,
+    onBulkConfirm: () -> Unit,
+    onBulkBack: () -> Unit,
+    onBulkCancel: () -> Unit,
+    onBulkDiscard: () -> Unit,
+    onDismissBulkNotice: () -> Unit,
     onDismissError: () -> Unit,
     searchState: FileSearchState,
     onSearch: (String, FileKind, SearchScope) -> Unit,
@@ -125,14 +141,27 @@ fun ExplorerScreen(
 
     // Leaving Files (for Storage, Cleanup or Settings) must also stop scans.
     DisposableEffect(Unit) {
-        onDispose { onCancelSearch() }
+        onDispose {
+            onCancelSearch()
+            onBulkLeave()
+        }
+    }
+    // A selection belongs to exactly one source folder.
+    LaunchedEffect(state.path, usingDevice) {
+        onBulkLeave()
     }
 
-    BackHandler(enabled = searchVisible || state.path.size > 1, onBack = {
-        if (searchVisible) {
-            searchVisible = false
-            onCancelSearch()
-        } else onNavigateUp()
+    BackHandler(enabled = searchVisible || bulkState.stage == BulkStage.SELECTING ||
+        bulkState.stage == BulkStage.DESTINATION || state.path.size > 1, onBack = {
+        when {
+            searchVisible -> {
+                searchVisible = false
+                onCancelSearch()
+            }
+            bulkState.stage == BulkStage.SELECTING -> onBulkDiscard()
+            bulkState.stage == BulkStage.DESTINATION && state.path.size <= 1 -> onBulkDiscard()
+            else -> onNavigateUp()
+        }
     })
     LaunchedEffect(state.errorMessage) {
         state.errorMessage?.let {
@@ -146,11 +175,26 @@ fun ExplorerScreen(
             onDismissCopyNotice()
         }
     }
+    LaunchedEffect(bulkState.notice) {
+        bulkState.notice?.let {
+            snackbar.showSnackbar(it)
+            onDismissBulkNotice()
+        }
+    }
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbar) },
         bottomBar = {
-            if (copyState.sourceName != null) {
+            if (bulkState.stage != BulkStage.OFF) {
+                BulkBottomBar(
+                    state = bulkState,
+                    canPaste = state.hasRoot && state.canCreateFolder && !state.isLoading,
+                    onAction = onBulkAction,
+                    onPasteReview = onBulkPaste,
+                    onDiscard = onBulkDiscard,
+                    onCancel = onBulkCancel
+                )
+            } else if (copyState.sourceName != null) {
                 Surface(tonalElevation = 3.dp) {
                     Column(
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
@@ -205,13 +249,26 @@ fun ExplorerScreen(
                     }
                 },
                 actions = {
-                    if (state.hasRoot) {
+                    if (state.hasRoot && bulkState.stage == BulkStage.OFF) {
                         IconButton(onClick = {
                             searchVisible = !searchVisible
                             onCancelSearch()
                         }) {
                             Icon(if (searchVisible) Icons.Default.Close else Icons.Default.Search,
                                 contentDescription = if (searchVisible) "Close search" else "Search files")
+                        }
+                    }
+                    if (state.hasRoot && !searchVisible &&
+                        (bulkState.stage == BulkStage.OFF || bulkState.stage == BulkStage.SELECTING)) {
+                        IconButton(
+                            onClick = {
+                                if (bulkState.stage == BulkStage.OFF) onBulkStart()
+                                else onBulkDiscard()
+                            }
+                        ) {
+                            Icon(Icons.Default.Checklist,
+                                contentDescription = if (bulkState.stage == BulkStage.SELECTING)
+                                    "Exit multi-select" else "Select multiple files")
                         }
                     }
                     if (state.hasRoot || supportsFullAccess) {
@@ -471,6 +528,20 @@ fun ExplorerScreen(
             }
             else -> {
                 Column(Modifier.fillMaxSize().padding(innerPadding)) {
+                    if (bulkState.stage == BulkStage.SELECTING) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(bulkState.count.toString() + " selected",
+                                style = MaterialTheme.typography.labelLarge)
+                            TextButton(onClick = { onBulkSelectAll(state.entries) }) {
+                                Text("Select all")
+                            }
+                            TextButton(onClick = onBulkClear) { Text("Deselect all") }
+                        }
+                    }
                     Row(
                         Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -511,7 +582,11 @@ fun ExplorerScreen(
                                     onOpen = { if (entry.isDirectory) onOpenDirectory(entry) else onOpenFile(entry) },
                                     onRename = { renameTarget = entry },
                                     onDelete = { deleteTarget = entry },
-                                    onCopy = { onCopy(entry) }
+                                    onCopy = { onCopy(entry) },
+                                    selectionMode = bulkState.stage == BulkStage.SELECTING,
+                                    selected = entry.id in bulkState.selectedIds,
+                                    actionsEnabled = bulkState.stage == BulkStage.OFF,
+                                    onSelect = { onBulkToggle(entry) }
                                 )
                             }
                         }
@@ -520,6 +595,12 @@ fun ExplorerScreen(
             }
         }
     }
+
+    BulkReviewDialog(
+        state = bulkState,
+        onConfirm = onBulkConfirm,
+        onCancel = onBulkBack
+    )
 
     if (creating) {
         NameDialog(
@@ -560,13 +641,21 @@ private fun FileRow(
     onOpen: () -> Unit,
     onRename: () -> Unit,
     onDelete: () -> Unit,
-    onCopy: () -> Unit
+    onCopy: () -> Unit,
+    selectionMode: Boolean,
+    selected: Boolean,
+    actionsEnabled: Boolean,
+    onSelect: () -> Unit
 ) {
     var menuExpanded by remember(entry.id) { mutableStateOf(false) }
     ListItem(
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onOpen),
+        modifier = Modifier.fillMaxWidth().clickable(
+            onClick = if (selectionMode) onSelect else onOpen
+        ),
         leadingContent = {
-            Icon(
+            if (selectionMode) {
+                Checkbox(checked = selected, onCheckedChange = { onSelect() })
+            } else Icon(
                 imageVector = when {
                     entry.isDirectory -> Icons.Default.Folder
                     entry.mimeType?.startsWith("image/") == true -> Icons.Default.Image
@@ -597,6 +686,7 @@ private fun FileRow(
             )
         },
         trailingContent = {
+            if (actionsEnabled) {
                 Box {
                     IconButton(onClick = { menuExpanded = true }) {
                         Icon(Icons.Default.MoreVert, contentDescription = "Actions for ${entry.name}")
@@ -622,6 +712,7 @@ private fun FileRow(
                         )
                     }
                 }
+            }
         }
     )
 }
