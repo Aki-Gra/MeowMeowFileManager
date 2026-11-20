@@ -15,6 +15,7 @@ import com.meowmeow.filemanager.model.BulkAction
 import com.meowmeow.filemanager.model.BulkProgress
 import com.meowmeow.filemanager.model.BulkSelection
 import com.meowmeow.filemanager.model.BulkStatus
+import com.meowmeow.filemanager.model.ExpectedFileOperationException
 import com.meowmeow.filemanager.model.FileEntry
 import com.meowmeow.filemanager.model.SafeBulkOperations
 import java.io.IOException
@@ -79,6 +80,7 @@ class BulkViewModel(
     fun selectAll(entries: List<FileEntry>, resolve: (FileEntry) -> CopyPlace?) {
         if (_state.value.stage != BulkStage.SELECTING) return
         for (entry in entries.take(500)) {
+            if (!chosen.containsKey(entry.id) && chosen.size >= 500) break
             val place = resolve(entry) ?: continue
             chosen[entry.id] = place to entry
         }
@@ -172,6 +174,28 @@ class BulkViewModel(
                                 sourcePlace, requireNotNull(target),
                                 operations.isDirectory(source)
                             )
+                        },
+                        validateSelection = { source ->
+                            val entry = chosen.values.firstOrNull {
+                                it.first.node == source
+                            }?.second ?: throw ExpectedFileOperationException(
+                                "Selection is no longer available."
+                            )
+                            if (operations.isDirectory(source) != entry.isDirectory)
+                                throw ExpectedFileOperationException(
+                                    "Selected item changed. Select it again."
+                                )
+                            if (!entry.isDirectory && operations.size(source) >= 0 &&
+                                operations.size(source) != entry.sizeBytes)
+                                throw ExpectedFileOperationException(
+                                    "Selected file changed. Select it again."
+                                )
+                            val modified = operations.modified(source)
+                            if (modified > 0 && entry.modifiedAtMillis > 0 &&
+                                modified != entry.modifiedAtMillis)
+                                throw ExpectedFileOperationException(
+                                    "Selected item changed. Select it again."
+                                )
                         },
                         onUpdate = { progress ->
                             withContext(Dispatchers.Main) {

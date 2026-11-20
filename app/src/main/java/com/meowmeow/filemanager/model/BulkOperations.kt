@@ -51,6 +51,7 @@ class SafeBulkOperations<T>(private val ops: BulkOperations<T>) {
         selected: List<BulkSelection<T>>,
         destination: T? = null,
         validateDestination: (T, T) -> Unit = { _, _ -> },
+        validateSelection: (T) -> Unit = {},
         onUpdate: suspend (BulkProgress) -> Unit = {}
     ): BulkProgress {
         require(selected.isNotEmpty() && selected.size <= 500)
@@ -65,6 +66,7 @@ class SafeBulkOperations<T>(private val ops: BulkOperations<T>) {
             var copiedBytes = 0L
             var copiedFiles = 0
             val result = try {
+                validateSelection(selection.item)
                 when (action) {
                     BulkAction.COPY -> {
                         val folder = requireNotNull(destination)
