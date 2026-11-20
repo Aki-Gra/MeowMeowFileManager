@@ -3,7 +3,7 @@ package com.meowmeow.filemanager.data
 import android.content.Context
 import android.webkit.MimeTypeMap
 import androidx.documentfile.provider.DocumentFile
-import com.meowmeow.filemanager.model.CopyOperations
+import com.meowmeow.filemanager.model.BulkOperations
 import com.meowmeow.filemanager.model.ExpectedFileOperationException
 import com.meowmeow.filemanager.model.rejectExistingName
 import java.io.File
@@ -32,7 +32,7 @@ data class CopyPlace(
     }
 }
 
-class AndroidCopyOperations(context: Context) : CopyOperations<CopyNode> {
+class AndroidCopyOperations(context: Context) : BulkOperations<CopyNode> {
     private val resolver = context.applicationContext.contentResolver
     private val local = LocalFileRepository()
 
@@ -168,6 +168,23 @@ class AndroidCopyOperations(context: Context) : CopyOperations<CopyNode> {
             val selected = doc(file)
             resolver.openOutputStream(selected.uri, "wt")
                 ?: throw IOException("Could not write the destination file.")
+        }
+    }
+
+    override fun deleteSource(item: CopyNode): Boolean = when (item) {
+        is CopyNode.Device -> {
+            val file = checked(item)
+            if (!file.canWrite()) throw IOException("Cannot delete read-only item.")
+            if (file.isDirectory && file.listFiles()?.isNotEmpty() != false)
+                throw IOException("Folder must be empty before deletion.")
+            Files.deleteIfExists(file.toPath())
+        }
+        is CopyNode.Scoped -> {
+            val file = doc(item)
+            if (!file.canWrite()) throw IOException("Cannot delete read-only item.")
+            if (file.isDirectory && file.listFiles().isNotEmpty())
+                throw IOException("Folder must be empty before deletion.")
+            file.delete()
         }
     }
 

@@ -88,7 +88,7 @@ class SafeBulkOperations<T>(private val ops: BulkOperations<T>) {
                                 ops.name(it) == ops.name(selection.item)
                             } ?: throw IOException("Copied destination no longer available.")
                             verifyMatchingTrees(before, copiedRoot)
-                            deleteTree(before)
+                            deleteTree(before, hashFiles = true)
                             BulkItemResult(selection.displayName, BulkStatus.SUCCESS, "Moved")
                         } catch (failure: Exception) {
                             // Do not roll back a verified copy here: a source might have
@@ -101,7 +101,7 @@ class SafeBulkOperations<T>(private val ops: BulkOperations<T>) {
                     BulkAction.DELETE -> {
                         val before = snapshot(selection.item, hashFiles = false)
                         validateSnapshot(before, hashFiles = false)
-                        deleteTree(before)
+                        deleteTree(before, hashFiles = false)
                         BulkItemResult(selection.displayName, BulkStatus.SUCCESS, "Deleted permanently")
                     }
                 }
@@ -204,12 +204,12 @@ class SafeBulkOperations<T>(private val ops: BulkOperations<T>) {
         }
     }
 
-    private suspend fun deleteTree(s: ItemSnapshot<T>) {
+    private suspend fun deleteTree(s: ItemSnapshot<T>, hashFiles: Boolean) {
         currentCoroutineContext().ensureActive()
         // Revalidate each subtree immediately before touching it.
-        validateSnapshot(s, hashFiles = s.digest != null)
+        validateSnapshot(s, hashFiles = hashFiles)
         for (child in s.descendants) {
-            deleteTree(child)
+            deleteTree(child, hashFiles)
         }
         // Only remove the now-empty directory or exact file, never a full
         // recursive folder in one provider operation.
