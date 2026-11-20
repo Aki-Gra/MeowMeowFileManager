@@ -44,6 +44,7 @@ import com.meowmeow.filemanager.model.FileEntry
 import com.meowmeow.filemanager.ui.CleanupScreen
 import com.meowmeow.filemanager.ui.CleanupViewModel
 import com.meowmeow.filemanager.ui.CopyViewModel
+import com.meowmeow.filemanager.ui.BulkViewModel
 import com.meowmeow.filemanager.ui.DeviceExplorerViewModel
 import com.meowmeow.filemanager.ui.ExplorerScreen
 import com.meowmeow.filemanager.ui.ExplorerViewModel
@@ -80,6 +81,9 @@ class MainActivity : ComponentActivity() {
         val copy = ViewModelProvider(
             this, CopyViewModel.Factory(applicationContext)
         )[CopyViewModel::class.java]
+        val bulk = ViewModelProvider(
+            this, BulkViewModel.Factory(applicationContext)
+        )[BulkViewModel::class.java]
         val supported = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
 
         setContent {
@@ -89,6 +93,7 @@ class MainActivity : ComponentActivity() {
             val scopedSearch by scoped.search.collectAsStateWithLifecycle()
             val cleanupState by cleanup.state.collectAsStateWithLifecycle()
             val copyState by copy.state.collectAsStateWithLifecycle()
+            val bulkState by bulk.state.collectAsStateWithLifecycle()
             val savedErrors by errorLog.entries.collectAsStateWithLifecycle()
             val errorLoggingEnabled by errorLog.enabled.collectAsStateWithLifecycle()
             var page by rememberSaveable { mutableStateOf(Page.FILES) }
@@ -238,6 +243,45 @@ class MainActivity : ComponentActivity() {
                                 },
                                 onCopyCancel = copy::cancelOrClear,
                                 onDismissCopyNotice = copy::dismissNotice,
+                                bulkState = bulkState,
+                                onBulkStart = {
+                                    if (!copyState.isCopying) {
+                                        copy.cancelOrClear()
+                                        bulk.startSelection()
+                                    }
+                                },
+                                onBulkToggle = { entry ->
+                                    bulk.toggle(entry,
+                                        if (usingDevice) device.copySelection(entry)
+                                        else scoped.copySelection(entry)
+                                    )
+                                },
+                                onBulkSelectAll = { entries ->
+                                    bulk.selectAll(entries) { entry ->
+                                        if (usingDevice) device.copySelection(entry)
+                                        else scoped.copySelection(entry)
+                                    }
+                                },
+                                onBulkClear = bulk::clearSelection,
+                                onBulkLeave = bulk::leaveSelection,
+                                onBulkAction = bulk::chooseAction,
+                                onBulkPaste = {
+                                    val destination = if (usingDevice)
+                                        device.copyDestination() else scoped.copyDestination()
+                                    val label = (if (usingDevice) deviceState.path
+                                        else scopedState.path).joinToString(" / ")
+                                    bulk.reviewDestination(destination, label)
+                                },
+                                onBulkConfirm = {
+                                    bulk.confirm {
+                                        if (allFilesGranted) device.refresh()
+                                        scoped.refresh()
+                                    }
+                                },
+                                onBulkBack = bulk::backToDestination,
+                                onBulkCancel = bulk::cancelRunning,
+                                onBulkDiscard = bulk::abandon,
+                                onDismissBulkNotice = bulk::dismissNotice,
                                 onDismissError = {
                                     if (usingDevice) device.clearError() else scoped.clearError()
                                 },
