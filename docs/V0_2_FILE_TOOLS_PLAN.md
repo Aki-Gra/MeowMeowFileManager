@@ -48,7 +48,7 @@
 
 1. **Discovery milestone (code implemented; device QA pending)** — Search and file-type filtering, with bounded results (up to 300), progress, clear scope, cancellation and unit tests.
 2. **Safe copy milestone (implemented in code; device QA pending)** — Single-file and folder copy, in-explorer destination navigation, collision handling, SHA-256 verification, cancellation/rollback, automated tests.
-3. **Selection and bulk milestone** — Multi-select; bulk copy/move/delete with per-item progress, collision behavior and failure recovery.
+3. **Selection and bulk milestone (implemented; device QA pending)** — Multi-select; bulk copy/move/delete with per-item progress, collision behavior and failure recovery.
 4. **Analysis milestone** — Large-file detection beyond Downloads and exact duplicate detection (read-only first; deletion only through shared reviewed bulk flow).
 5. **Final integration milestone** — Real-device regression and QA, fresh debug APK, updated docs, PR review and only then merge into `main`.
 
@@ -139,3 +139,41 @@ The misleading **Include subfolders** switch was replaced with a **Search locati
 - [ ] Check the copy bar, button disabled state, progress, back navigation, small portrait phone and dark mode.
 - [ ] Confirm Settings logs do not contain file names, full paths, stack traces or raw I/O exception messages.
 - [ ] Test previous Search, Storage, Cleanup, rename, delete and Settings features for regressions.
+
+## Milestone 3 — Multi-selection and reviewed bulk operations
+
+**Status:** Implemented in the v0.2 branch; automated verification and **real-device QA pending**. No automatic file removal or overwriting is performed without an explicit action.
+
+### Workflow
+
+1. In **Files**, tap the multi-select **checklist** icon. Check individual entries or choose **Select all** / **Deselect all**. A selection is limited to the current visible folder and 500 top-level entries, and is cleared if you leave that source folder while still selecting. Known selected file size is shown, explicitly excluding sizes inside folders.
+2. Choose **Copy**, **Move**, or **Delete** from the selection footer.
+3. For Copy/Move, navigate to a writable folder in Device storage or the granted SAF tree, then tap **Paste here**. The review dialog shows destination, number of selected items and a sample of their names. **Back** returns to destination selection without changing any files.
+4. For Delete, a review dialog warns that selected folders and their full contents are **permanently removed** with no recycle bin or undo.
+5. Only after confirmation does processing begin. Operations run sequentially, off the UI thread, with item-by-item results. **Cancel remaining** stops before the next safe step; already completed actions are retained and explicitly reported.
+6. The results footer displays successful, skipped, failed and unprocessed counts and the first five non-success outcomes. Nothing is marked all-success when individual items fail.
+
+### Safety and scope
+
+- **Copy:** Reuses streaming 64-KiB copy and SHA-256 destination verification. Name collisions skip the item and do not overwrite.
+- **Move:** Performs and verifies each source tree copy first, hashes for unchanged content and validates the source/destination structure **before removing original files**. Original files are deleted bottom-up and each directory must be empty first. If deletion is interrupted or fails, the destination copy remains and a per-item partial-failure warning tells the user to review *both* places.
+- **Delete:** Explicit permanent review; bounded folder scan and source metadata revalidation before removal. Nonempty folders are traversed only during this confirmed bulk deletion; individual storage operations never recursively delete a directory automatically.
+- **Folder constraints:** Operations are limited to 10,000 descendants and depth 48 for each selected top-level folder. Same-tree ancestry checks prevent folder copy/move into itself or descendants. Cross-mode file copy and move work only with valid grants; folder copy/move across different storage modes or selected roots is deliberately restricted.
+- **Identity:** Selected file/folder type, size and modification time are checked again before processing. Symlinks and protected Android directories are excluded by existing checked storage adapters. SAF operations remain inside the user-granted tree.
+- **Privacy:** Clipboard and selections are in-memory, never saved to disk or the network. Sanitized \`MM-BULK-COPY\`, \`MM-BULK-MOVE\` and \`MM-BULK-DEL\` codes are used for actual failures; expected conflicts and filename validation do not enter diagnostics.
+
+### Milestone 3 real-device QA — required
+
+- [ ] In Device storage choose **multi-select**, select two test files and a folder; check counters, row checkboxes, Select all, Deselect all and selection clearing on changing source folder.
+- [ ] Choose Bulk Copy, navigate to another folder and choose Paste here; review number/names/destination, tap **Back** (no changes), reopen and confirm. Both original and copied files must match.
+- [ ] Copy into a folder containing a duplicate name. It must be **skipped** without modifying the existing file, with accurate success/skip counts and no false error log entry.
+- [ ] Bulk Move several disposable files to another folder; verify destination content and removal of *only* successfully copied originals. Move a nested test folder and verify its hierarchy.
+- [ ] Use folder-picker mode (SAF) for selection/destination and check operations respect its grant. Try cross-mode file copy/move with disposable files. Confirm cross-mode **folder** move is refused safely.
+- [ ] Select disposable files and a disposable folder with nested content, choose Bulk Delete, cancel the review first (no deletion), then confirm; only selected data is permanently removed.
+- [ ] During a long bulk copy or move tap **Cancel remaining**; check completed items remain, the current copy cleans up if possible, and the unprocessed count is correct. Never test on personal files.
+- [ ] Revoke storage permission or make a disposable destination read-only before execution; verify failure handling and that originals are not lost on failed copies.
+- [ ] Confirm move-to-self, move-to-descendant and duplicate destination names are safely refused or skipped.
+- [ ] Verify UI on a narrow portrait display and dark mode; review dialogs must scroll for many selected items.
+- [ ] Check that genuine failures have sanitized operation codes and that personal filenames, paths, contents and stack traces are **not in exported error logs**.
+- [ ] Regression: Search scope, file type filters, ordinary single-file Copy/Paste, rename/delete, Storage, Cleanup, Settings and the launcher icon still work.
+- [ ] Current PR head passes unit tests / Android assembleDebug and a matching APK is installed before recording final on-device acceptance.

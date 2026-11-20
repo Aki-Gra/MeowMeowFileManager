@@ -102,3 +102,8 @@ Search has three choices: **Current folder only**, **Current folder + subfolders
 ## v0.2 milestone 2 — Copy (device QA pending)
 
 On the v0.2 feature branch, Files → item menu → **Copy** selects a file or folder. Navigate within Files and choose **Paste here**. This is intentionally non-destructive: overwrite is blocked, original files are retained, each file is SHA-256 verified and an interrupted copy attempts to remove only the items it created. Single files can be copied across direct/SAF access modes where permission allows; folder copy is restricted to the same storage mode and selected root. See [v0.2 plan](docs/V0_2_FILE_TOOLS_PLAN.md) for limits and QA steps. This feature is not yet merged to main or approved through real-device QA.
+
+
+## v0.2 Milestone 3 — bulk operations (device QA pending)
+
+The Files checklist button enters multi-select mode for files and folders in the current folder. **Select all**, **Deselect all**, **Copy**, **Move**, and **Delete** are available, with an explicit confirmation/review step before processing. Copy/move choose a destination via the existing explorer; delete is permanent and warns about selected folder contents. Processing is sequential with success/skip/failure/remaining counts and cancellation. Moves delete originals only after a verified copy; unexpected partial results must be reviewed. All operations respect storage permissions and never silently overwrite. See [the milestone 3 QA checklist](docs/V0_2_FILE_TOOLS_PLAN.md).
