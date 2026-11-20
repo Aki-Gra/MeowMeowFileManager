@@ -20,6 +20,7 @@ class BulkOperationsTest {
         fun add(child: MemNode) { children.add(child); child.parent = this }
     }
     private class Ops: BulkOperations<MemNode> {
+        var failDestinationRead = false
         override fun name(item: MemNode) = item.name
         override fun isDirectory(item: MemNode) = item.folder
         override fun mime(item: MemNode): String? = "text/plain"
@@ -37,7 +38,11 @@ class BulkOperationsTest {
             rejectExistingName(contains(parent, name))
             return MemNode(name, false).also { parent.add(it) }
         }
-        override fun read(file: MemNode): InputStream = ByteArrayInputStream(file.contents)
+        override fun read(file: MemNode): InputStream {
+            if (failDestinationRead && file.parent?.name == "dest")
+                throw java.io.IOException("Provider read failure")
+            return ByteArrayInputStream(file.contents)
+        }
         override fun write(file: MemNode): OutputStream = object : ByteArrayOutputStream() {
             override fun close() {
                 super.close()
@@ -107,6 +112,46 @@ class BulkOperationsTest {
         assertEquals(1,result.success)
         assertTrue(source.children.isEmpty())
         assertEquals("content",dest.children.single().children.single().contents.toString(Charsets.UTF_8))
+    }
+
+    @Test fun moveFailureKeepsOriginalAndReportsFailure() = runBlocking {
+        val source = MemNode("source",true)
+        val item = f("protected.txt","important")
+        source.add(item)
+        val dest = MemNode("dest",true)
+        val result = SafeBulkOperations(Ops().apply { failDestinationRead = true })
+            .execute(BulkAction.MOVE,listOf(BulkSelection(item,"protected.txt")),dest)
+        assertEquals(0,result.success)
+        assertEquals(1,result.failed)
+        assertTrue(source.children.contains(item))
+        assertTrue(dest.children.isEmpty())
+    }
+
+    @Test fun confirmedNestedFolderDeleteDoesNotRemoveUnselectedSibling() = runBlocking {
+        val source = MemNode("source",true)
+        val selected = MemNode("selected",true)
+        selected.add(f("nested.txt","nested"))
+        val keep = f("keep.txt","keep")
+        source.add(selected)
+        source.add(keep)
+        val result = SafeBulkOperations(Ops()).execute(
+            BulkAction.DELETE,listOf(BulkSelection(selected,"selected"))
+        )
+        assertEquals(1,result.success)
+        assertEquals(listOf(keep),source.children)
+    }
+
+    @Test fun changedSourceIsSkippedBeforeDeletion() = runBlocking {
+        val source=MemNode("source",true)
+        val item=f("file.txt","new")
+        source.add(item)
+        val result=SafeBulkOperations(Ops()).execute(
+            BulkAction.DELETE,listOf(BulkSelection(item,"file.txt")),
+            validateSelection = { throw ExpectedFileOperationException("Changed file") }
+        )
+        assertEquals(1,result.skipped)
+        assertEquals(0,result.success)
+        assertEquals(listOf(item),source.children)
     }
 
     @Test fun cancellationKeepsPreviouslyCompletedItems() {
