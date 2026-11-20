@@ -151,8 +151,10 @@ fun BulkReviewDialog(
                 if (state.count > 8) {
                     Text("… and " + (state.count - 8) + " more")
                 }
-                Text("Existing destination names are skipped, not overwritten.",
-                    style = MaterialTheme.typography.bodySmall)
+                if (action != BulkAction.DELETE) {
+                    Text("Existing destination names are skipped, not overwritten.",
+                        style = MaterialTheme.typography.bodySmall)
+                }
             }
         },
         confirmButton = {

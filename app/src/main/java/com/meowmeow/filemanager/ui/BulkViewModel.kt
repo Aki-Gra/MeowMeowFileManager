@@ -22,6 +22,7 @@ import java.io.IOException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -198,7 +199,9 @@ class BulkViewModel(
                                 )
                         },
                         onUpdate = { progress ->
-                            withContext(Dispatchers.Main) {
+                            // A finished item must be counted even if Cancel is
+                            // tapped while the UI progress update is dispatched.
+                            withContext(NonCancellable + Dispatchers.Main) {
                                 _state.value = _state.value.copy(progress = progress)
                             }
                         }
