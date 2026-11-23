@@ -16,7 +16,7 @@ enum class ErrorArea {
     SCOPED_FOLDER_PICKER, SCOPED_BROWSING, SCOPED_FILE_OPERATION,
     DEVICE_BROWSING, DEVICE_FILE_OPERATION, CLEANUP_SCAN, CLEANUP_DELETE,
     STORAGE_OVERVIEW, EXTERNAL_FILE_OPEN, APP_CRASH, DIAGNOSTICS_TEST,
-    LOG_EXPORT, COPY_OPERATION
+    LOG_EXPORT, COPY_OPERATION, FILE_ANALYSIS
 }
 /**
  * Stable, non-sensitive action identifiers. Do not reuse or rename shipped codes:
@@ -42,6 +42,8 @@ enum class ErrorOperation(val code: String, val title: String) {
     FS_RENAME("FS-REN", "Rename device item"),
     FS_DELETE("FS-DEL", "Delete device item"),
     FS_SEARCH("FS-SEARCH", "Search device storage"),
+    DUPLICATE_SCAN("DUP-SCAN", "Find exact duplicates"),
+    LARGE_FILE_SCAN("LARGE-SCAN", "Scan for large files"),
     SAF_SEARCH("SAF-SEARCH", "Search chosen folder"),
     CLEANUP_SCAN("CLN-SCAN", "Scan large downloads"),
     CLEANUP_DELETE("CLN-DEL", "Delete selected download"),
