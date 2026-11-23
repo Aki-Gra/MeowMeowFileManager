@@ -229,6 +229,16 @@ class DeviceExplorerViewModel(
         loadFolder()
     }
 
+    /** Read-only scan starts from the explicit folder/search scope. */
+    fun analysisFolder(scope: SearchScope): CopyPlace? {
+        if (!repository.hasAccess()) return null
+        val folder = searchStartFolder(folders.firstOrNull(), folders.lastOrNull(), scope)
+            ?: return null
+        return runCatching {
+            CopyPlace(CopyNode.Device(folder), "device", folders.map { it.path })
+        }.getOrNull()
+    }
+
     fun copySelection(entry: FileEntry): CopyPlace? {
         if (_state.value.entries.none { it.id == entry.id }) return null
         return runCatching {

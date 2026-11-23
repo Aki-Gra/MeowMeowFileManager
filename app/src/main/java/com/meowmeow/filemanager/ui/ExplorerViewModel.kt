@@ -253,6 +253,17 @@ class ExplorerViewModel(
         loadFolder()
     }
 
+    /** Read-only scan remains within the selected SAF grant. */
+    fun analysisFolder(scope: SearchScope): CopyPlace? {
+        val root = folders.firstOrNull()?.file ?: return null
+        val current = folders.lastOrNull()?.file ?: return null
+        val folder = searchStartFolder(root, current, scope) ?: return null
+        return CopyPlace(
+            CopyNode.Scoped(folder), root.uri.toString(),
+            folders.map { it.file.uri.toString() }
+        )
+    }
+
     fun copySelection(entry: FileEntry): CopyPlace? {
         if (_state.value.entries.none { it.id == entry.id }) return null
         val file = children[entry.id] ?: return null
