@@ -23,6 +23,7 @@ class SafeCopyTest {
     private class MemOps : CopyOperations<Node> {
         var corruptDestRead = false
         var failDestWrite = false
+        var safeReplace = true
         private val createdFiles = mutableSetOf<Node>()
         override fun name(item: Node) = item.name
         override fun isDirectory(item: Node) = item.folder
@@ -49,6 +50,14 @@ class SafeCopyTest {
                 super.close()
                 file.bytes = toByteArray()
             }
+        }
+        override fun supportsAtomicReplace(folder: Node) = safeReplace
+        override fun atomicReplace(staged: Node, existing: Node) {
+            val i = root.children.indexOf(existing)
+            check(i >= 0 && root.children.contains(staged))
+            root.children.remove(staged)
+            root.children[i.coerceAtMost(root.children.size - 1)] =
+                Node(existing.name, false, staged.bytes.clone())
         }
         override fun removeCreated(item: Node): Boolean {
             fun remove(parent: Node): Boolean {
@@ -133,6 +142,112 @@ class SafeCopyTest {
         }
         assertTrue(destination.children.isEmpty())
         assertArrayEquals(byteArrayOf(3, 2, 1), source.bytes)
+    }
+
+    @Test fun suggestedNamePreservesExtensionAndFindsNextFreeName() {
+        assertEquals("report (copy).pdf", suggestCopyName("report.pdf") { false })
+        assertEquals("report (copy 3).pdf", suggestCopyName("report.pdf") {
+            it == "report (copy).pdf" || it == "report (copy 2).pdf"
+        })
+        assertEquals("notes (copy)", suggestCopyName("notes") { false })
+    }
+
+    @Test fun renameOnCollisionKeepsOriginalAndNewCopy() = runBlocking {
+        val source = Node("photo.jpg", false, byteArrayOf(1, 2, 3))
+        val destination = Node("dst", true)
+        val existing = Node("photo.jpg", false, byteArrayOf(9, 9))
+        destination.children.add(existing)
+        val ops = MemOps().apply { root = destination }
+        val result = SafeCopy(ops).perform(
+            source, destination,
+            resolveConflict = { conflict ->
+                assertEquals("photo (copy).jpg", conflict.suggestedName)
+                CopyConflictChoice.Rename(conflict.suggestedName)
+            }
+        )
+        assertEquals("photo (copy).jpg", result.renamedTo)
+        assertEquals(2, destination.children.size)
+        assertArrayEquals(byteArrayOf(9, 9), existing.bytes)
+        assertArrayEquals(source.bytes, destination.children.first {
+            it.name == "photo (copy).jpg"
+        }.bytes)
+    }
+
+    @Test fun replaceOnCollisionIsExplicitAndVerified() = runBlocking {
+        val source = Node("file.txt", false, "updated".toByteArray())
+        val destination = Node("dst", true)
+        val original = Node("file.txt", false, "old".toByteArray())
+        destination.children.add(original)
+        val ops = MemOps().apply { root = destination }
+        val result = SafeCopy(ops).perform(source, destination,
+            resolveConflict = { conflict ->
+                assertTrue(conflict.canReplace)
+                CopyConflictChoice.Replace
+            }
+        )
+        assertTrue(result.replacedExisting)
+        assertEquals(1, destination.children.size)
+        assertEquals("file.txt", destination.children.single().name)
+        assertArrayEquals("updated".toByteArray(), destination.children.single().bytes)
+        assertArrayEquals("updated".toByteArray(), source.bytes)
+    }
+
+    @Test fun failedReplacementLeavesOriginalUntouched() {
+        val source = Node("file.txt", false, byteArrayOf(1, 2, 3))
+        val destination = Node("dst", true)
+        val original = Node("file.txt", false, byteArrayOf(7, 8))
+        destination.children.add(original)
+        val ops = MemOps().apply { root = destination; failDestWrite = true }
+        assertThrows(IOException::class.java) {
+            runBlocking {
+                SafeCopy(ops).perform(source, destination,
+                    resolveConflict = { CopyConflictChoice.Replace })
+            }
+        }
+        assertEquals(listOf(original), destination.children)
+        assertArrayEquals(byteArrayOf(7, 8), original.bytes)
+    }
+
+    @Test fun replacementRejectsChangedDestinationBeforeCommit() {
+        val source = Node("file.txt", false, byteArrayOf(1, 2, 3))
+        val destination = Node("dst", true)
+        val original = Node("file.txt", false, byteArrayOf(7, 8))
+        destination.children.add(original)
+        val ops = MemOps().apply { root = destination }
+        assertThrows(ExpectedFileOperationException::class.java) {
+            runBlocking {
+                SafeCopy(ops).perform(source, destination,
+                    resolveConflict = { CopyConflictChoice.Replace },
+                    onProgress = { original.bytes = byteArrayOf(2, 2) })
+            }
+        }
+        assertEquals(listOf(original), destination.children)
+        assertArrayEquals(byteArrayOf(2, 2), original.bytes)
+    }
+
+    @Test fun replaceNotAvailableForFolderOrProviderWithoutAtomicSwap() = runBlocking {
+        val source = Node("folder", true)
+        val destination = Node("dst", true)
+        destination.children.add(Node("folder", true))
+        val ops = MemOps().apply { root = destination }
+        try {
+            SafeCopy(ops).perform(source, destination, resolveConflict = { conflict ->
+                assertFalse(conflict.canReplace)
+                CopyConflictChoice.Replace
+            })
+            throw AssertionError("Expected validation refusal")
+        } catch (_: ExpectedFileOperationException) { }
+        val file = Node("file.txt", false, byteArrayOf(1))
+        destination.children.add(Node("file.txt", false, byteArrayOf(2)))
+        ops.safeReplace = false
+        try {
+            SafeCopy(ops).perform(file, destination, resolveConflict = { conflict ->
+                assertFalse(conflict.canReplace)
+                CopyConflictChoice.Replace
+            })
+            throw AssertionError("Expected validation refusal")
+        } catch (_: ExpectedFileOperationException) { }
+        assertEquals(2, destination.children.size)
     }
 
     @Test fun recursiveCycleRollsBack() {
