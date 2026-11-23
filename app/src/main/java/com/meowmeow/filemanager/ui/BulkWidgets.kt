@@ -98,7 +98,11 @@ fun BulkBottomBar(
                     )
                     state.notice?.let { Text(it, color = MaterialTheme.colorScheme.error,
                         style = MaterialTheme.typography.bodySmall) }
-                    p?.results?.filter { it.status != com.meowmeow.filemanager.model.BulkStatus.SUCCESS }
+                    p?.results?.filter {
+                        it.status != com.meowmeow.filemanager.model.BulkStatus.SUCCESS ||
+                            it.detail == "Replaced existing file" ||
+                            it.detail == "Copied with a new name"
+                    }
                         ?.take(5)?.forEach { result ->
                             Text(result.name + ": " + result.detail,
                                 maxLines = 2, style = MaterialTheme.typography.bodySmall)
@@ -151,8 +155,11 @@ fun BulkReviewDialog(
                 if (state.count > 8) {
                     Text("… and " + (state.count - 8) + " more")
                 }
-                if (action != BulkAction.DELETE) {
-                    Text("Existing destination names are skipped, not overwritten.",
+                if (action == BulkAction.COPY) {
+                    Text("If a destination name exists, choose Rename, supported Replace, or Skip for that item.",
+                        style = MaterialTheme.typography.bodySmall)
+                } else if (action == BulkAction.MOVE) {
+                    Text("Move skips destination name conflicts rather than overwriting.",
                         style = MaterialTheme.typography.bodySmall)
                 }
             }

@@ -185,7 +185,7 @@ The user reported the Milestone 3 device test passed, with one UX request: **Cop
 
 **Implemented in code, new revision device QA still pending:**
 - Single-copy **Paste here** and each top-level item in a **Bulk Copy** now interrupt on an existing name and show **Keep both (rename copy)**, **Replace existing file** where safe, and **Skip this item**.
-- The suggested new name retains the original extension (report.pdf → report (copy).pdf), and can be edited. A second existing name is rejected without overwriting.
+- The suggested new name retains the original extension (report.pdf → report (copy).pdf), and can be edited. If another existing name is entered, the dialog asks again without overwriting.
 - Direct-storage file Replace uses a separate staged copy, streamed SHA-256 verification of the staged copy, unchanged-destination validation and an atomic same-directory file swap. A failed/cancelled staged copy leaves the existing file unchanged. If atomic swap is not supported, Replace is rejected rather than falling back to unsafe truncation.
 - Folder collisions cannot replace the entire existing directory. SAF document providers do not guarantee safe atomic replace; these cases show only Rename or Skip and explain why. A copy within its own source folder cannot replace itself.
 - Bulk Move retains its existing **Skip on conflict** behavior. Bulk Copy is where per-item prompts are introduced; the dialog does not apply a destructive choice to the entire batch.
