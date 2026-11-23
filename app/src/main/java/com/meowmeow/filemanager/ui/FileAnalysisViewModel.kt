@@ -58,8 +58,10 @@ class FileAnalysisViewModel(
     private val _state = MutableStateFlow(FileAnalysisUiState())
     val state: StateFlow<FileAnalysisUiState> = _state
     private var job: Job? = null
+    private var scanGeneration = 0L
 
     fun reset() {
+        scanGeneration++
         job?.cancel()
         job = null
         _state.value = FileAnalysisUiState()
@@ -67,12 +69,15 @@ class FileAnalysisViewModel(
 
     fun cancel() {
         if (!_state.value.isRunning) return
+        scanGeneration++
         job?.cancel()
         job = null
         _state.value = FileAnalysisUiState(notice = "Scan cancelled. No changes were made.")
     }
 
     fun scan(root: CopyPlace?, kind: AnalysisKind, scope: SearchScope, minimumMiB: Int) {
+        scanGeneration++
+        val generation = scanGeneration
         job?.cancel()
         if (root == null) {
             _state.value = FileAnalysisUiState(
@@ -150,7 +155,7 @@ class FileAnalysisViewModel(
                     notice = "Scan failed. Confirm that the selected folder is still accessible."
                 )
             } finally {
-                job = null
+                if (generation == scanGeneration) job = null
             }
         }
     }

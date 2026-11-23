@@ -94,8 +94,11 @@ class FileAnalysisScanner<T>(private val ops: CopyOperations<T>) {
                         }
                     } else {
                         val size = ops.size(child)
-                        if (size >= 0 &&
-                            (kind == AnalysisKind.DUPLICATES || size >= minimumBytes)) {
+                        if (size < 0) {
+                            // SAF providers may not report lengths, so size-based
+                            // analysis cannot reliably classify these files.
+                            unreadable++
+                        } else if (kind == AnalysisKind.DUPLICATES || size >= minimumBytes) {
                             candidates.add(Sized(
                                 AnalysisItem(child, ops.name(child),
                                     next.relativeFolder.ifEmpty { "Selected scope" }, size),
