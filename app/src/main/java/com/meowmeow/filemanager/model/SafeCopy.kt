@@ -45,8 +45,8 @@ data class CopyTotals(
 
 /**
  * Copy bytes with fixed-size buffers, verify every file's SHA-256 against
- * destination read-back and roll back the newly created top-level item if
- * any operation fails or is cancelled. No existing item is overwritten.
+ * destination read-back and roll back only newly created items if an operation
+ * fails. Explicit replacement uses a verified staged copy and atomic swap.
  */
 class SafeCopy<T>(private val op: CopyOperations<T>) {
     private suspend fun calculateHash(item: T): ByteArray {
@@ -79,21 +79,25 @@ class SafeCopy<T>(private val op: CopyOperations<T>) {
         var oldHash: ByteArray? = null
         var oldSize = -1L
         var oldModified = 0L
-        if (op.contains(destinationFolder, selectedName)) {
+        var prompts = 0
+        while (op.contains(destinationFolder, selectedName) && replaceTarget == null) {
+            if (++prompts > 10)
+                throw ExpectedFileOperationException("Too many name conflicts. Try another folder.")
             val item = op.findChild(destinationFolder, selectedName)
             val allowReplace = item != null && !op.isDirectory(source) &&
                 !op.isDirectory(item) && op.supportsAtomicReplace(destinationFolder) &&
                 op.identity(item) != op.identity(source)
             when (val choice = resolveConflict(CopyConflict(
-                originalName, suggestCopyName(originalName) { op.contains(destinationFolder, it) },
+                selectedName, suggestCopyName(selectedName) { op.contains(destinationFolder, it) },
                 allowReplace
             ))) {
                 CopyConflictChoice.Skip ->
                     throw ExpectedFileOperationException("Copy skipped; destination name already exists.")
                 is CopyConflictChoice.Rename -> {
                     validateRequestedName(choice.newName)
-                    rejectExistingName(op.contains(destinationFolder, choice.newName))
                     selectedName = choice.newName
+                    // A manually entered name may itself already exist.
+                    // Re-prompt instead of unexpectedly ending the copy.
                 }
                 CopyConflictChoice.Replace -> {
                     if (!allowReplace || item == null)
@@ -205,6 +209,7 @@ class SafeCopy<T>(private val op: CopyOperations<T>) {
                 ) throw ExpectedFileOperationException(
                     "Destination changed since confirmation. Review it and retry."
                 )
+                currentCoroutineContext().ensureActive()
                 op.atomicReplace(requireNotNull(created), current)
             }
             return totals.copy(
