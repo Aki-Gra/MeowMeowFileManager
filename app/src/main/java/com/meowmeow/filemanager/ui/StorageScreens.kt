@@ -195,7 +195,8 @@ fun CleanupScreen(
     onScan: () -> Unit,
     onToggle: (String) -> Unit,
     onDelete: () -> Unit,
-    onDismissMessage: () -> Unit
+    onDismissMessage: () -> Unit,
+    onOpenAnalysis: () -> Unit
 ) {
     var confirming by remember { mutableStateOf(false) }
     val snackbar = remember { SnackbarHostState() }
@@ -211,6 +212,12 @@ fun CleanupScreen(
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            OutlinedButton(
+                onClick = onOpenAnalysis,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Find duplicates and large files")
+            }
             Text("Large files in Downloads", style = MaterialTheme.typography.titleMedium)
             Text("Review downloads of 50 MiB or more. Nothing is removed automatically. " +
                 "Deleting selected files is permanent and cannot be undone.",

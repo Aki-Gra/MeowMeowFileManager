@@ -43,6 +43,8 @@ import com.meowmeow.filemanager.diagnostics.suggestedErrorLogFileName
 import com.meowmeow.filemanager.model.FileEntry
 import com.meowmeow.filemanager.ui.CleanupScreen
 import com.meowmeow.filemanager.ui.CleanupViewModel
+import com.meowmeow.filemanager.ui.FileAnalysisViewModel
+import com.meowmeow.filemanager.ui.FileAnalysisScreen
 import com.meowmeow.filemanager.ui.CopyViewModel
 import com.meowmeow.filemanager.ui.BulkViewModel
 import com.meowmeow.filemanager.ui.DeviceExplorerViewModel
@@ -56,7 +58,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-private enum class Page { FILES, STORAGE, CLEANUP, SETTINGS }
+private enum class Page { FILES, STORAGE, CLEANUP, ANALYSIS, SETTINGS }
 
 class MainActivity : ComponentActivity() {
     private var allFilesGranted by mutableStateOf(false)
@@ -78,6 +80,9 @@ class MainActivity : ComponentActivity() {
         val cleanup = ViewModelProvider(
             this, CleanupViewModel.Factory(applicationContext)
         )[CleanupViewModel::class.java]
+        val analysis = ViewModelProvider(
+            this, FileAnalysisViewModel.Factory(applicationContext)
+        )[FileAnalysisViewModel::class.java]
         val copy = ViewModelProvider(
             this, CopyViewModel.Factory(applicationContext)
         )[CopyViewModel::class.java]
@@ -92,6 +97,7 @@ class MainActivity : ComponentActivity() {
             val deviceSearch by device.search.collectAsStateWithLifecycle()
             val scopedSearch by scoped.search.collectAsStateWithLifecycle()
             val cleanupState by cleanup.state.collectAsStateWithLifecycle()
+            val analysisState by analysis.state.collectAsStateWithLifecycle()
             val copyState by copy.state.collectAsStateWithLifecycle()
             val bulkState by bulk.state.collectAsStateWithLifecycle()
             val savedErrors by errorLog.entries.collectAsStateWithLifecycle()
@@ -183,7 +189,7 @@ class MainActivity : ComponentActivity() {
                                 label = { Text("Storage") }
                             )
                             NavigationBarItem(
-                                selected = page == Page.CLEANUP,
+                                selected = page == Page.CLEANUP || page == Page.ANALYSIS,
                                 onClick = { page = Page.CLEANUP },
                                 icon = { Icon(Icons.Default.CleaningServices, contentDescription = null) },
                                 label = { Text("Cleanup") }
@@ -329,8 +335,25 @@ class MainActivity : ComponentActivity() {
                                 },
                                 onClear = errorLog::clear
                             )
+                            Page.ANALYSIS -> FileAnalysisScreen(
+                                state = analysisState,
+                                usingDevice = usingDevice,
+                                sourcePath = if (usingDevice) deviceState.path else scopedState.path,
+                                onBack = {
+                                    analysis.cancel()
+                                    page = Page.CLEANUP
+                                },
+                                onStart = { kind, scope, minimumMiB ->
+                                    val folder = if (usingDevice) device.analysisFolder(scope)
+                                        else scoped.analysisFolder(scope)
+                                    analysis.scan(folder, kind, scope, minimumMiB)
+                                },
+                                onCancel = analysis::cancel,
+                                onOpenFile = ::openFile
+                            )
                             Page.CLEANUP -> CleanupScreen(
                                 state = cleanupState,
+                                onOpenAnalysis = { page = Page.ANALYSIS },
                                 hasFullAccess = allFilesGranted,
                                 supportsFullAccess = supported,
                                 onGrantAccess = ::requestAllFilesAccess,

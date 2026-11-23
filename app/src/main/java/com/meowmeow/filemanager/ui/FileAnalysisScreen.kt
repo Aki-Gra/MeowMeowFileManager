@@ -67,6 +67,9 @@ fun FileAnalysisScreen(
         SearchScope.ROOT_AND_SUBFOLDERS -> rootLabel
     }
 
+    val showingCurrent = state.complete && state.kind == mode &&
+        state.scope == scope && (mode != AnalysisKind.LARGE || state.thresholdMiB == threshold)
+
     Scaffold(topBar = {
         TopAppBar(
             title = { Text("Find files") },
@@ -150,7 +153,7 @@ fun FileAnalysisScreen(
                 Button(
                     enabled = !state.isRunning && sourcePath.isNotEmpty(),
                     onClick = { onStart(mode, scope, threshold) }
-                ) { Text(if (state.complete) "Scan again" else "Scan files") }
+                ) { Text(if (showingCurrent) "Scan again" else "Scan files") }
                 if (state.isRunning) {
                     OutlinedButton(onClick = onCancel) { Text("Cancel scan") }
                 }
@@ -168,7 +171,7 @@ fun FileAnalysisScreen(
                 Text(it, color = MaterialTheme.colorScheme.error,
                     style = MaterialTheme.typography.bodySmall)
             }
-            if (state.complete) {
+            if (showingCurrent) {
                 if (state.truncated || state.unreadable > 0) {
                     Text(
                         buildString {
@@ -204,7 +207,7 @@ fun FileAnalysisScreen(
                 modifier = Modifier.weight(1f),
                 contentPadding = PaddingValues(bottom = 32.dp)
             ) {
-                if (state.complete && state.kind == AnalysisKind.LARGE) {
+                if (showingCurrent && state.kind == AnalysisKind.LARGE) {
                     items(state.large, key = { it.entry.id }) { hit ->
                         AnalysisFileRow(hit, onOpenFile)
                     }
@@ -212,7 +215,7 @@ fun FileAnalysisScreen(
                         Text("No large files found in the scanned scope.",
                             modifier = Modifier.padding(16.dp))
                     }
-                } else if (state.complete && state.kind == AnalysisKind.DUPLICATES) {
+                } else if (showingCurrent && state.kind == AnalysisKind.DUPLICATES) {
                     items(state.duplicateGroups) { group ->
                         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                             Text(
