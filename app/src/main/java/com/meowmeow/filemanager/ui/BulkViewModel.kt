@@ -18,8 +18,11 @@ import com.meowmeow.filemanager.model.BulkStatus
 import com.meowmeow.filemanager.model.ExpectedFileOperationException
 import com.meowmeow.filemanager.model.FileEntry
 import com.meowmeow.filemanager.model.SafeBulkOperations
+import com.meowmeow.filemanager.model.CopyConflict
+import com.meowmeow.filemanager.model.CopyConflictChoice
 import java.io.IOException
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
@@ -32,6 +35,7 @@ enum class BulkStage { OFF, SELECTING, DESTINATION, REVIEW, RUNNING, RESULTS }
 
 data class BulkUiState(
     val stage: BulkStage = BulkStage.OFF,
+    val conflict: CopyConflict? = null,
     val selectedIds: Set<String> = emptySet(),
     val selectedNames: List<String> = emptyList(),
     val selectedBytes: Long = 0L,
@@ -54,6 +58,24 @@ class BulkViewModel(
     val state: StateFlow<BulkUiState> = _state
     private var job: Job? = null
     private var destination: CopyPlace? = null
+    private var conflictAnswer: CompletableDeferred<CopyConflictChoice>? = null
+
+    private suspend fun askConflict(conflict: CopyConflict): CopyConflictChoice =
+        withContext(Dispatchers.Main) {
+            val answer = CompletableDeferred<CopyConflictChoice>()
+            conflictAnswer = answer
+            _state.value = _state.value.copy(conflict = conflict)
+            try {
+                answer.await()
+            } finally {
+                conflictAnswer = null
+                _state.value = _state.value.copy(conflict = null)
+            }
+        }
+
+    fun answerConflict(choice: CopyConflictChoice) {
+        conflictAnswer?.complete(choice)
+    }
 
     fun startSelection() {
         if (_state.value.stage != BulkStage.OFF) return
@@ -198,6 +220,7 @@ class BulkViewModel(
                                     "Selected item changed. Select it again."
                                 )
                         },
+                        resolveCopyConflict = { conflict -> askConflict(conflict) },
                         onUpdate = { progress ->
                             // A finished item must be counted even if Cancel is
                             // tapped while the UI progress update is dispatched.
@@ -210,17 +233,18 @@ class BulkViewModel(
                 if (completed.results.any { it.status == BulkStatus.FAILED })
                     recordFailedAction(action)
                 _state.value = _state.value.copy(
-                    stage = BulkStage.RESULTS, progress = completed, cancelled = false
+                    stage = BulkStage.RESULTS, progress = completed, cancelled = false,
+                    conflict = null
                 )
             } catch (_: CancellationException) {
                 _state.value = _state.value.copy(
-                    stage = BulkStage.RESULTS, cancelled = true,
+                    stage = BulkStage.RESULTS, cancelled = true, conflict = null,
                     notice = "Cancelled. Completed changes remain. Review results."
                 )
             } catch (_: Exception) {
                 recordFailedAction(action)
                 _state.value = _state.value.copy(
-                    stage = BulkStage.RESULTS,
+                    stage = BulkStage.RESULTS, conflict = null,
                     notice = "Operation stopped. Review both locations before retrying."
                 )
             } finally {
