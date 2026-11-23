@@ -247,6 +247,23 @@ class SafeCopyTest {
         assertArrayEquals(byteArrayOf(2, 2), original.bytes)
     }
 
+    @Test fun copyingFileIntoItsOwnFolderNeverOffersSelfReplacement() = runBlocking {
+        val destination = Node("photos", true)
+        val original = Node("cat.jpg", false, byteArrayOf(7, 8))
+        destination.children.add(original)
+        val ops = MemOps().apply { root = destination }
+        val result = SafeCopy(ops).perform(
+            original, destination,
+            resolveConflict = { conflict ->
+                assertFalse(conflict.canReplace)
+                CopyConflictChoice.Rename(conflict.suggestedName)
+            }
+        )
+        assertEquals("cat (copy).jpg", result.renamedTo)
+        assertEquals(2, destination.children.size)
+        assertArrayEquals(byteArrayOf(7, 8), original.bytes)
+    }
+
     @Test fun replaceNotAvailableForFolderOrProviderWithoutAtomicSwap() = runBlocking {
         val source = Node("folder", true)
         val destination = Node("dst", true)
