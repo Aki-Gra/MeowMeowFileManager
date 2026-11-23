@@ -75,6 +75,41 @@ class BulkOperationsTest {
         assertArrayEquals(a.contents, dest.children.first { it.name == "a.txt" }.contents)
     }
 
+    @Test fun bulkCopyAsksPerConflictAndKeepsUnrelatedFiles() = runBlocking {
+        val originalFolder = MemNode("source", true)
+        val a = f("alpha.txt", "new alpha")
+        val b = f("bravo.txt", "new bravo")
+        originalFolder.add(a)
+        originalFolder.add(b)
+        val destination = MemNode("dest", true)
+        val oldA = f("alpha.txt", "old alpha")
+        val oldB = f("bravo.txt", "old bravo")
+        destination.add(oldA)
+        destination.add(oldB)
+        var asked = 0
+        val result = SafeBulkOperations(Ops()).execute(
+            action = BulkAction.COPY,
+            selected = listOf(BulkSelection(a, "alpha.txt"), BulkSelection(b, "bravo.txt")),
+            destination = destination,
+            resolveCopyConflict = { conflict ->
+                asked++
+                if (conflict.name == "alpha.txt") CopyConflictChoice.Rename("alpha-renamed.txt")
+                else CopyConflictChoice.Skip
+            }
+        )
+        assertEquals(2, asked)
+        assertEquals(1, result.success)
+        assertEquals(1, result.skipped)
+        assertEquals(0, result.failed)
+        assertEquals(2, result.processed)
+        assertArrayEquals("old alpha".toByteArray(), oldA.contents)
+        assertArrayEquals("old bravo".toByteArray(), oldB.contents)
+        assertArrayEquals("new alpha".toByteArray(),
+            destination.children.first { it.name == "alpha-renamed.txt" }.contents)
+        assertTrue(originalFolder.children.contains(a))
+        assertTrue(originalFolder.children.contains(b))
+    }
+
     @Test fun verifiedMoveCopiesBeforeRemovingSource() = runBlocking {
         val source = MemNode("source",true)
         val a = f("a.txt","hello")
