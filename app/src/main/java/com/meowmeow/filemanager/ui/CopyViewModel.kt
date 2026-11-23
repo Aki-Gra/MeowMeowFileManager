@@ -14,8 +14,11 @@ import com.meowmeow.filemanager.diagnostics.ErrorOperation
 import com.meowmeow.filemanager.diagnostics.ErrorLogStore
 import com.meowmeow.filemanager.model.ExpectedFileOperationException
 import com.meowmeow.filemanager.model.SafeCopy
+import com.meowmeow.filemanager.model.CopyConflict
+import com.meowmeow.filemanager.model.CopyConflictChoice
 import java.io.IOException
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -25,6 +28,7 @@ import kotlinx.coroutines.withContext
 
 data class CopyUiState(
     val sourceName: String? = null,
+    val conflict: CopyConflict? = null,
     val isCopying: Boolean = false,
     val filesCopied: Int = 0,
     val foldersCopied: Int = 0,
@@ -41,6 +45,24 @@ class CopyViewModel(
     val state: StateFlow<CopyUiState> = _state
     private var selected: CopyPlace? = null
     private var job: Job? = null
+    private var conflictAnswer: CompletableDeferred<CopyConflictChoice>? = null
+
+    private suspend fun askConflict(conflict: CopyConflict): CopyConflictChoice =
+        withContext(Dispatchers.Main) {
+            val answer = CompletableDeferred<CopyConflictChoice>()
+            conflictAnswer = answer
+            _state.value = _state.value.copy(conflict = conflict)
+            try {
+                answer.await()
+            } finally {
+                conflictAnswer = null
+                _state.value = _state.value.copy(conflict = null)
+            }
+        }
+
+    fun answerConflict(choice: CopyConflictChoice) {
+        conflictAnswer?.complete(choice)
+    }
 
     fun select(place: CopyPlace?, displayName: String) {
         if (_state.value.isCopying) return
@@ -70,7 +92,10 @@ class CopyViewModel(
                 val result = withContext(Dispatchers.IO) {
                     val isFolder = copyOps.isDirectory(source.node)
                     validateCopyDestination(source, destination, isFolder)
-                    SafeCopy(copyOps).perform(source.node, destination.node) { totals ->
+                    SafeCopy(copyOps).perform(
+                        source.node, destination.node,
+                        resolveConflict = { conflict -> askConflict(conflict) }
+                    ) { totals ->
                         withContext(Dispatchers.Main) {
                             _state.value = _state.value.copy(
                                 filesCopied = totals.copiedFiles,
@@ -82,13 +107,18 @@ class CopyViewModel(
                 }
                 selected = null
                 _state.value = CopyUiState(
-                    notice = "Copied " + result.copiedFiles + " file(s), " +
-                        result.copiedFolders + " folder(s)."
+                    notice = when {
+                        result.replacedExisting -> "Existing file replaced after verification."
+                        result.renamedTo != null -> "Copy saved under the new name."
+                        else -> "Copied " + result.copiedFiles + " file(s), " +
+                            result.copiedFolders + " folder(s)."
+                    }
                 )
                 onSuccess()
             } catch (_: CancellationException) {
                 _state.value = _state.value.copy(
-                    isCopying = false, notice = "Copy cancelled. Partial copies were cleaned up if possible."
+                    isCopying = false, conflict = null,
+                    notice = "Copy cancelled. Partial copies were cleaned up if possible."
                 )
             } catch (failure: Exception) {
                 val code = when (source.node) {
@@ -106,7 +136,9 @@ class CopyViewModel(
                         else "Copy failed. Source files were not changed."
                     else -> "Copy failed. Source files were not changed."
                 }
-                _state.value = _state.value.copy(isCopying = false, notice = message)
+                _state.value = _state.value.copy(
+                    isCopying = false, conflict = null, notice = message
+                )
             } finally {
                 job = null
             }
