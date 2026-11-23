@@ -173,6 +173,28 @@ class SafeCopyTest {
         }.bytes)
     }
 
+    @Test fun rePromptsWhenRenamedDestinationAlsoExists() = runBlocking {
+        val source = Node("cat.jpg", false, byteArrayOf(3, 4))
+        val destination = Node("dest", true)
+        val original = Node("cat.jpg", false, byteArrayOf(9))
+        val other = Node("cat (copy).jpg", false, byteArrayOf(8))
+        destination.children.add(original)
+        destination.children.add(other)
+        val ops = MemOps().apply { root = destination }
+        var prompts = 0
+        val result = SafeCopy(ops).perform(source, destination,
+            resolveConflict = {
+                prompts++
+                if (prompts == 1) CopyConflictChoice.Rename("cat (copy).jpg")
+                else CopyConflictChoice.Rename(it.suggestedName)
+            })
+        assertEquals(2, prompts)
+        assertEquals("cat (copy) (copy).jpg", result.renamedTo)
+        assertEquals(3, destination.children.size)
+        assertArrayEquals(byteArrayOf(9), original.bytes)
+        assertArrayEquals(byteArrayOf(8), other.bytes)
+    }
+
     @Test fun replaceOnCollisionIsExplicitAndVerified() = runBlocking {
         val source = Node("file.txt", false, "updated".toByteArray())
         val destination = Node("dst", true)
