@@ -49,7 +49,7 @@
 1. **Discovery milestone (code implemented; device QA pending)** — Search and file-type filtering, with bounded results (up to 300), progress, clear scope, cancellation and unit tests.
 2. **Safe copy milestone (implemented in code; device QA pending)** — Single-file and folder copy, in-explorer destination navigation, collision handling, SHA-256 verification, cancellation/rollback, automated tests.
 3. **Selection and bulk milestone (implemented; device QA pending)** — Multi-select; bulk copy/move/delete with per-item progress, collision behavior and failure recovery.
-4. **Analysis milestone** — Large-file detection beyond Downloads and exact duplicate detection (read-only first; deletion only through shared reviewed bulk flow).
+4. **Analysis milestone (code implemented, real-device QA pending)** — Large-file detection beyond Downloads and exact SHA-256 duplicates; read-only scans, no automatic deletion.
 5. **Final integration milestone** — Real-device regression and QA, fresh debug APK, updated docs, PR review and only then merge into `main`.
 
 Implement incremental commits and keep the draft PR checklist honest. A feature is not “done” until applicable tests and a real Android device test pass.
@@ -199,3 +199,27 @@ The user reported the Milestone 3 device test passed, with one UX request: **Cop
 - [ ] In Android folder-picker (SAF) mode and for folder-name conflicts, ensure Rename and Skip work and no unsupported Replace is available.
 - [ ] Bulk-copy three disposable files, two with destination conflicts. Choose Rename for one and Skip for the other; ensure the third copies normally, per-item counts are accurate and unrelated files remain intact.
 - [ ] Verify the dialog does not cover critical controls on a small phone and its Cancel/Skip option does not log an application failure.
+
+
+## Milestone 4 — Exact duplicates and large files
+
+**Code implemented, Android and real-device QA required.** Open **Cleanup → Find duplicates and large files**. This is separate from the pre-existing **Large files in Downloads (50 MiB+)** cleanup functionality.
+
+- **Large files:** Choose 10, 50, 100, 500, or 1024 MiB minimum size. Results sorted largest first, with file names, sizes and relative folders.
+- **Exact duplicates:** Group by byte size, hash size-matched files by streamed SHA-256 (64 KiB buffer). Files with identical names but different bytes are *not* duplicates. Groups display matched files and an estimated saving if **one** copy per group is kept.
+- **Scopes:** Current folder only; Current folder + subfolders; Device storage root + subfolders, or Selected folder root + subfolders for the SAF picker. Current folder is the last folder opened in Files.
+- **Progress/cancellation:** Scans run on Dispatchers.IO, can be cancelled or left via Back. Bound per scan: 2,000 folders, 20,000 visited items, 300 displayed results, and 20 GiB of duplicate hash reads. Limits and unreadable/changed files are explicitly marked incomplete.
+- **Read-only/privacy:** Results live in memory only. No filesystem changes or automatic delete, no network/index persistence. Existing Android permissions and symlink/protected-folder safeguards apply; sanitized MM-DUP-SCAN / MM-LARGE-SCAN diagnostics without filenames, paths or raw exceptions.
+- Tap a file to use the existing file opener. For deletion, review files manually through the Files tab; never delete every copy of a duplicate set blindly.
+
+**Device QA checklist:**
+- [ ] In Files open a nested folder, then Cleanup → Find duplicates and large files. Test all three scopes: current subtree must exclude siblings; root scope must include accessible siblings.
+- [ ] Large-file thresholds exclude smaller files; results are size-sorted; test empty and mixed-size folders.
+- [ ] Two byte-identical files with different names form one duplicate group; an identically named but different-content test file does not.
+- [ ] Test a matching file in a subfolder: absent in shallow scan, present in recursive scan. Verify potential space savings is clearly an estimate.
+- [ ] Scan using SAF-only access in a chosen tree, and with full-device access. Android-protected folders and symlinks must not be searched.
+- [ ] Cancel a long scan; also use Android system Back and navigate to another tab while scanning. No crash or false error log.
+- [ ] Inaccessible files or hitting limits produce incomplete-result warnings. A stale or changed file is not called a verified duplicate.
+- [ ] Tap results to open files and verify neither scanner creates, changes or deletes anything.
+- [ ] Regression: existing Downloads cleanup, Search and its scopes, ordinary and bulk copy/move/delete, Replace/Rename/Skip, Storage and privacy-safe diagnostics.
+- [ ] Check narrow portrait and dark theme. Test the APK built from the matching PR head before accepting Milestone 4.

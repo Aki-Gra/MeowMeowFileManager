@@ -112,3 +112,8 @@ The Files checklist button enters multi-select mode for files and folders in the
 ### Copy collision prompts (new build — pending phone verification)
 
 On **single Copy** and **Bulk Copy**, a duplicate filename opens a choice for **Keep both (rename copy)**, **Replace existing file** (only for direct storage regular files with atomic replacement), or **Skip this item**. Rename preserves extensions by default and can be edited. Replace is never automatic, and existing content remains intact if staging fails before the atomic commit. SAF providers and folder collisions support Rename/Skip only. Bulk Move still skips destination conflicts rather than overwriting originals. No personal file paths/names are recorded in the error log.
+
+
+## v0.2 Milestone 4 — File analysis (device QA pending)
+
+**Cleanup → Find duplicates and large files** provides two read-only scans: large files with a 10 / 50 / 100 / 500 / 1024 MiB minimum, and exact duplicates verified by size and streamed SHA-256. Both support current folder, current subtree, or selected storage root subtree, direct shared-storage or SAF-granted access, progress, cancel, and incomplete-result warnings. Every scan is limited to 2,000 folders, 20,000 entries, and 300 displayed matches; hashing has a 20 GiB budget. No files are automatically removed and no private paths/content/hashes are persisted or logged. Existing Downloads cleanup is unchanged. Device QA is required before merge.
