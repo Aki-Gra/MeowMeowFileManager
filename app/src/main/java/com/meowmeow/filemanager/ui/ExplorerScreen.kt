@@ -74,6 +74,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.meowmeow.filemanager.model.FileEntry
 import com.meowmeow.filemanager.model.BulkAction
+import com.meowmeow.filemanager.model.CopyConflictChoice
 import com.meowmeow.filemanager.model.FileKind
 import com.meowmeow.filemanager.model.SearchScope
 import com.meowmeow.filemanager.model.detectFileKind
@@ -101,7 +102,9 @@ fun ExplorerScreen(
     onPaste: () -> Unit,
     onCopyCancel: () -> Unit,
     onDismissCopyNotice: () -> Unit,
+    onCopyConflictDecision: (CopyConflictChoice) -> Unit,
     bulkState: BulkUiState,
+    onBulkConflictDecision: (CopyConflictChoice) -> Unit,
     onBulkStart: () -> Unit,
     onBulkToggle: (FileEntry) -> Unit,
     onBulkSelectAll: (List<FileEntry>) -> Unit,
@@ -600,6 +603,14 @@ fun ExplorerScreen(
         state = bulkState,
         onConfirm = onBulkConfirm,
         onCancel = onBulkBack
+    )
+    CopyConflictDialog(
+        conflict = copyState.conflict,
+        onDecision = onCopyConflictDecision
+    )
+    CopyConflictDialog(
+        conflict = bulkState.conflict,
+        onDecision = onBulkConflictDecision
     )
 
     if (creating) {

@@ -243,7 +243,9 @@ class MainActivity : ComponentActivity() {
                                 },
                                 onCopyCancel = copy::cancelOrClear,
                                 onDismissCopyNotice = copy::dismissNotice,
+                                onCopyConflictDecision = copy::answerConflict,
                                 bulkState = bulkState,
+                                onBulkConflictDecision = bulk::answerConflict,
                                 onBulkStart = {
                                     if (!copyState.isCopying) {
                                         copy.cancelOrClear()
