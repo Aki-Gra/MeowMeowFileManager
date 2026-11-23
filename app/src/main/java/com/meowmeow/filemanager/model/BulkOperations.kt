@@ -52,6 +52,7 @@ class SafeBulkOperations<T>(private val ops: BulkOperations<T>) {
         destination: T? = null,
         validateDestination: (T, T) -> Unit = { _, _ -> },
         validateSelection: (T) -> Unit = {},
+        resolveCopyConflict: suspend (CopyConflict) -> CopyConflictChoice = { CopyConflictChoice.Skip },
         onUpdate: suspend (BulkProgress) -> Unit = {}
     ): BulkProgress {
         require(selected.isNotEmpty() && selected.size <= 500)
@@ -71,10 +72,19 @@ class SafeBulkOperations<T>(private val ops: BulkOperations<T>) {
                     BulkAction.COPY -> {
                         val folder = requireNotNull(destination)
                         validateDestination(selection.item, folder)
-                        val copied = SafeCopy(ops).perform(selection.item, folder)
+                        val copied = SafeCopy(ops).perform(
+                            selection.item, folder, resolveConflict = resolveCopyConflict
+                        )
                         copiedBytes = copied.bytes
                         copiedFiles = copied.copiedFiles
-                        BulkItemResult(selection.displayName, BulkStatus.SUCCESS, "Copied")
+                        BulkItemResult(
+                            selection.displayName, BulkStatus.SUCCESS,
+                            when {
+                                copied.replacedExisting -> "Replaced existing file"
+                                copied.renamedTo != null -> "Copied with a new name"
+                                else -> "Copied"
+                            }
+                        )
                     }
                     BulkAction.MOVE -> {
                         val folder = requireNotNull(destination)
