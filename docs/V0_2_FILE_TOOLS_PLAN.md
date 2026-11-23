@@ -26,7 +26,7 @@
 - Detect files changed since scan and require a fresh validation before any deletion. Default action is **review only**; never select a “keep” or delete automatically.
 
 ### 4. Copy a file or folder
-- User selects one source and a destination folder. Handle filename collisions without overwriting silently; default is **Skip**.
+- User selects one source and a destination folder. On filename collisions, ask whether to **Keep both (Rename)**, **Replace** where atomic replacement is available, or **Skip**; never overwrite silently.
 - A copied file must have the right bytes and the source must remain unchanged.
 - For folders: preserve relative directory structure, skip unsafe symlinks and block destination inside source.
 - Work only in approved device storage and/or SAF-granted trees. Clearly state when a selected provider cannot support a requested operation.
@@ -119,7 +119,7 @@ The misleading **Include subfolders** switch was replaced with a **Search locati
 
 **Behavior and safety**
 - Copy, not move: **the original item is never deleted**. File bytes stream through a fixed 64 KiB buffer off the UI thread; files are verified by SHA-256 against destination read-back. No entire file is loaded into memory.
-- Default conflict policy is **do not overwrite**. If the same name exists at the destination, the app shows a validation message; the existing file remains unchanged and no expected-conflict diagnostic entry is created. Choose a different destination or discard.
+- A name collision now prompts **Keep both (rename copy)**, **Replace existing file** when a verified, atomic device-storage swap is supported, or **Skip this item**. Rename suggests a new, editable name preserving the extension. Replace is an explicit destructive choice, never the default. Folder replacements and SAF provider-based replacements are disabled because they lack a safe atomic swap; Rename or Skip remains available. Expected conflicts are not recorded as errors.
 - Folder copies preserve their relative directory structure, with limits of 10,000 entries and depth 48. Self/descendant destinations are prohibited.
 - The app tracks every newly created item and cleans up only those items, in reverse order, if copying is cancelled, verification fails or another error occurs. If cleanup cannot finish, the app warns that an incomplete copy may remain.
 - Single-file copies can cross between full-device and SAF modes, provided both are authorized. **Folder copies require the same storage mode and the same selected root**, avoiding ambiguous directory ancestry and accidental self-copy across Android providers. This is a deliberate first-stage restriction.
@@ -131,7 +131,7 @@ The misleading **Include subfolders** switch was replaced with a **Search locati
 - [ ] Copy a disposable TXT, PDF and image into another folder in **Device storage**; confirm the original remains and the new file opens with identical content.
 - [ ] Copy a small folder with nested subfolders and several files; confirm folder hierarchy and bytes are preserved.
 - [ ] Use **Choose another folder** (SAF) and copy a file within the granted tree. Copy a file between SAF and Device storage in both directions where Android permits it.
-- [ ] Attempt to paste where an item with that name already exists. It must never overwrite/replace the existing item, and it must not add an expected error to the log.
+- [ ] Copy over a duplicate name: confirm the dialog offers Rename and Skip; where supported, Replace is explicit. Verify Rename leaves both files and preserves their contents. Verify Replace changes only the matching destination file after verification. Skip leaves everything unchanged and does not add an expected error to the log.
 - [ ] Try to paste a folder into itself or one of its descendants. The app must refuse without creating files.
 - [ ] Select a large disposable file, start copying, tap **Cancel copy**. Check no partial destination item is left; original remains intact.
 - [ ] Revoke permission during copy or simulate a provider write failure with test files. Copy must fail safely and report if any incomplete item could not be cleaned.
@@ -155,7 +155,7 @@ The misleading **Include subfolders** switch was replaced with a **Search locati
 
 ### Safety and scope
 
-- **Copy:** Reuses streaming 64-KiB copy and SHA-256 destination verification. Name collisions skip the item and do not overwrite.
+- **Copy:** Reuses streaming 64-KiB copy and SHA-256 destination verification. Each top-level filename conflict pauses the batch for explicit Rename, supported Replace, or Skip; never silently overwrite. Folder and SAF conflicts cannot replace.
 - **Move:** Performs and verifies each source tree copy first, hashes for unchanged content and validates the source/destination structure **before removing original files**. Original files are deleted bottom-up and each directory must be empty first. If deletion is interrupted or fails, the destination copy remains and a per-item partial-failure warning tells the user to review *both* places.
 - **Delete:** Explicit permanent review; bounded folder scan and source metadata revalidation before removal. Nonempty folders are traversed only during this confirmed bulk deletion; individual storage operations never recursively delete a directory automatically.
 - **Folder constraints:** Operations are limited to 10,000 descendants and depth 48 for each selected top-level folder. Same-tree ancestry checks prevent folder copy/move into itself or descendants. Cross-mode file copy and move work only with valid grants; folder copy/move across different storage modes or selected roots is deliberately restricted.
@@ -166,7 +166,7 @@ The misleading **Include subfolders** switch was replaced with a **Search locati
 
 - [ ] In Device storage choose **multi-select**, select two test files and a folder; check counters, row checkboxes, Select all, Deselect all and selection clearing on changing source folder.
 - [ ] Choose Bulk Copy, navigate to another folder and choose Paste here; review number/names/destination, tap **Back** (no changes), reopen and confirm. Both original and copied files must match.
-- [ ] Copy into a folder containing a duplicate name. It must be **skipped** without modifying the existing file, with accurate success/skip counts and no false error log entry.
+- [ ] Bulk-copy test files into a folder containing duplicate names. Verify each conflicting item prompts individually with Rename, Replace (only when safe), and Skip. Check the other items continue, outcomes are counted correctly, and existing files change only after explicit verified Replace.
 - [ ] Bulk Move several disposable files to another folder; verify destination content and removal of *only* successfully copied originals. Move a nested test folder and verify its hierarchy.
 - [ ] Use folder-picker mode (SAF) for selection/destination and check operations respect its grant. Try cross-mode file copy/move with disposable files. Confirm cross-mode **folder** move is refused safely.
 - [ ] Select disposable files and a disposable folder with nested content, choose Bulk Delete, cancel the review first (no deletion), then confirm; only selected data is permanently removed.
@@ -177,3 +177,25 @@ The misleading **Include subfolders** switch was replaced with a **Search locati
 - [ ] Check that genuine failures have sanitized operation codes and that personal filenames, paths, contents and stack traces are **not in exported error logs**.
 - [ ] Regression: Search scope, file type filters, ordinary single-file Copy/Paste, rename/delete, Storage, Cleanup, Settings and the launcher icon still work.
 - [ ] Current PR head passes unit tests / Android assembleDebug and a matching APK is installed before recording final on-device acceptance.
+
+
+## Post-device QA refinement — copy collisions (23 November 2026)
+
+The user reported the Milestone 3 device test passed, with one UX request: **Copy must ask whether to Replace or Rename if a destination name already exists**, rather than automatically skipping the item.
+
+**Implemented in code, new revision device QA still pending:**
+- Single-copy **Paste here** and each top-level item in a **Bulk Copy** now interrupt on an existing name and show **Keep both (rename copy)**, **Replace existing file** where safe, and **Skip this item**.
+- The suggested new name retains the original extension (report.pdf → report (copy).pdf), and can be edited. A second existing name is rejected without overwriting.
+- Direct-storage file Replace uses a separate staged copy, streamed SHA-256 verification of the staged copy, unchanged-destination validation and an atomic same-directory file swap. A failed/cancelled staged copy leaves the existing file unchanged. If atomic swap is not supported, Replace is rejected rather than falling back to unsafe truncation.
+- Folder collisions cannot replace the entire existing directory. SAF document providers do not guarantee safe atomic replace; these cases show only Rename or Skip and explain why. A copy within its own source folder cannot replace itself.
+- Bulk Move retains its existing **Skip on conflict** behavior. Bulk Copy is where per-item prompts are introduced; the dialog does not apply a destructive choice to the entire batch.
+- If a user selects Skip, this is expected user feedback, not an error log event. Only genuinely failed operations produce privacy-safe diagnostic codes.
+
+**Additional phone tests (use disposable items only):**
+- [ ] Copy test.txt to a folder with a different test.txt. Choose Rename, then verify test (copy).txt and both originals open correctly.
+- [ ] Repeat and choose Replace on device storage. Confirm the old destination content is replaced with the source content only after explicit confirmation.
+- [ ] Cancel/interrupt a large Replace while staging. The old destination must remain readable and unchanged.
+- [ ] Copy a file to its own folder. Replace must not be offered; Rename should create a second file.
+- [ ] In Android folder-picker (SAF) mode and for folder-name conflicts, ensure Rename and Skip work and no unsupported Replace is available.
+- [ ] Bulk-copy three disposable files, two with destination conflicts. Choose Rename for one and Skip for the other; ensure the third copies normally, per-item counts are accurate and unrelated files remain intact.
+- [ ] Verify the dialog does not cover critical controls on a small phone and its Cancel/Skip option does not log an application failure.

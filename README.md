@@ -101,9 +101,14 @@ Search has three choices: **Current folder only**, **Current folder + subfolders
 
 ## v0.2 milestone 2 — Copy (device QA pending)
 
-On the v0.2 feature branch, Files → item menu → **Copy** selects a file or folder. Navigate within Files and choose **Paste here**. This is intentionally non-destructive: overwrite is blocked, original files are retained, each file is SHA-256 verified and an interrupted copy attempts to remove only the items it created. Single files can be copied across direct/SAF access modes where permission allows; folder copy is restricted to the same storage mode and selected root. See [v0.2 plan](docs/V0_2_FILE_TOOLS_PLAN.md) for limits and QA steps. This feature is not yet merged to main or approved through real-device QA.
+On the v0.2 feature branch, Files → item menu → **Copy** selects a file or folder. Navigate within Files and choose **Paste here**. Copies preserve the original source. If a destination name exists, MeowMeow now asks to **Keep both (rename copy)**, **Replace existing file** where safe, or **Skip**. Replacements on direct storage are explicitly confirmed, SHA-256 verified in a separate staged file, then atomically swapped; folder and SAF replacements are disabled for safety. An interrupted staging copy attempts to remove only what it created. Single files can cross direct/SAF access modes where permission allows; folder copy is restricted to the same storage mode and selected root. See [v0.2 plan](docs/V0_2_FILE_TOOLS_PLAN.md) for limits and QA steps. The updated conflict UX is pending real-device QA and is not yet merged into main.
 
 
 ## v0.2 Milestone 3 — bulk operations (device QA pending)
 
 The Files checklist button enters multi-select mode for files and folders in the current folder. **Select all**, **Deselect all**, **Copy**, **Move**, and **Delete** are available, with an explicit confirmation/review step before processing. Copy/move choose a destination via the existing explorer; delete is permanent and warns about selected folder contents. Processing is sequential with success/skip/failure/remaining counts and cancellation. Moves delete originals only after a verified copy; unexpected partial results must be reviewed. All operations respect storage permissions and never silently overwrite. See [the milestone 3 QA checklist](docs/V0_2_FILE_TOOLS_PLAN.md).
+
+
+### Copy collision prompts (new build — pending phone verification)
+
+On **single Copy** and **Bulk Copy**, a duplicate filename opens a choice for **Keep both (rename copy)**, **Replace existing file** (only for direct storage regular files with atomic replacement), or **Skip this item**. Rename preserves extensions by default and can be edited. Replace is never automatic, and existing content remains intact if staging fails before the atomic commit. SAF providers and folder collisions support Rename/Skip only. Bulk Move still skips destination conflicts rather than overwriting originals. No personal file paths/names are recorded in the error log.
