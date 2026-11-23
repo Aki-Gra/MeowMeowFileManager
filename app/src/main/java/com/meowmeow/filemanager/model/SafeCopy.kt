@@ -4,6 +4,7 @@ import java.io.InputStream
 import java.io.OutputStream
 import java.io.IOException
 import java.security.MessageDigest
+import java.util.UUID
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 
@@ -24,9 +25,23 @@ interface CopyOperations<T> {
     fun write(file: T): OutputStream
     /** Delete only a newly created destination item, never the original. */
     fun removeCreated(item: T): Boolean
+
+    /** Replacement must be an atomic, same-directory swap; never truncate the old file. */
+    fun supportsAtomicReplace(folder: T): Boolean = false
+    fun findChild(folder: T, name: String): T? =
+        children(folder).firstOrNull { this.name(it) == name }
+    fun atomicReplace(staged: T, existing: T) {
+        throw ExpectedFileOperationException("Safe replacement is not available in this folder.")
+    }
 }
 
-data class CopyTotals(val copiedFiles: Int, val copiedFolders: Int, val bytes: Long)
+data class CopyTotals(
+    val copiedFiles: Int,
+    val copiedFolders: Int,
+    val bytes: Long,
+    val replacedExisting: Boolean = false,
+    val renamedTo: String? = null
+)
 
 /**
  * Copy bytes with fixed-size buffers, verify every file's SHA-256 against
@@ -34,17 +49,74 @@ data class CopyTotals(val copiedFiles: Int, val copiedFolders: Int, val bytes: L
  * any operation fails or is cancelled. No existing item is overwritten.
  */
 class SafeCopy<T>(private val op: CopyOperations<T>) {
+    private suspend fun calculateHash(item: T): ByteArray {
+        val digest = MessageDigest.getInstance("SHA-256")
+        val buffer = ByteArray(64 * 1024)
+        op.read(item).use { stream ->
+            while (true) {
+                currentCoroutineContext().ensureActive()
+                val read = stream.read(buffer)
+                if (read < 0) break
+                if (read > 0) digest.update(buffer, 0, read)
+            }
+        }
+        return digest.digest()
+    }
+
     suspend fun perform(
         source: T,
         destinationFolder: T,
+        resolveConflict: suspend (CopyConflict) -> CopyConflictChoice = { CopyConflictChoice.Skip },
         onProgress: suspend (CopyTotals) -> Unit = {}
     ): CopyTotals {
         currentCoroutineContext().ensureActive()
         if (!op.isDirectory(destinationFolder))
             throw ExpectedFileOperationException("Choose a destination folder.")
-        val name = op.name(source)
-        validateRequestedName(name)
-        rejectExistingName(op.contains(destinationFolder, name))
+        val originalName = op.name(source)
+        validateRequestedName(originalName)
+        var selectedName = originalName
+        var replaceTarget: T? = null
+        var oldHash: ByteArray? = null
+        var oldSize = -1L
+        var oldModified = 0L
+        if (op.contains(destinationFolder, selectedName)) {
+            val item = op.findChild(destinationFolder, selectedName)
+            val allowReplace = item != null && !op.isDirectory(source) &&
+                !op.isDirectory(item) && op.supportsAtomicReplace(destinationFolder) &&
+                op.identity(item) != op.identity(source)
+            when (val choice = resolveConflict(CopyConflict(
+                originalName, suggestCopyName(originalName) { op.contains(destinationFolder, it) },
+                allowReplace
+            ))) {
+                CopyConflictChoice.Skip ->
+                    throw ExpectedFileOperationException("Copy skipped; destination name already exists.")
+                is CopyConflictChoice.Rename -> {
+                    validateRequestedName(choice.newName)
+                    rejectExistingName(op.contains(destinationFolder, choice.newName))
+                    selectedName = choice.newName
+                }
+                CopyConflictChoice.Replace -> {
+                    if (!allowReplace || item == null)
+                        throw ExpectedFileOperationException(
+                            "Safe replacement is unavailable. Rename the copy instead."
+                        )
+                    replaceTarget = item
+                    oldSize = op.size(item)
+                    oldModified = op.modified(item)
+                    oldHash = calculateHash(item)
+                }
+            }
+        }
+        currentCoroutineContext().ensureActive()
+        val stagedName = if (replaceTarget == null) selectedName else {
+            val ext = selectedName.substringAfterLast('.', "")
+                .takeIf { selectedName.lastIndexOf('.') > 0 && it.isNotEmpty() }?.let { ".$it" } ?: ""
+            var candidate: String
+            do {
+                candidate = "meowmeow-staging-" + UUID.randomUUID().toString() + ext
+            } while (op.contains(destinationFolder, candidate))
+            candidate
+        }
         var created: T? = null
         // Track exactly what this operation created. Never recursively delete
         // unrelated files that appeared in the destination while copying.
@@ -55,8 +127,8 @@ class SafeCopy<T>(private val op: CopyOperations<T>) {
         try {
             // Only objects created below can ever be deleted on rollback.
             created = if (op.isDirectory(source))
-                op.createFolder(destinationFolder, name)
-            else op.createFile(destinationFolder, name, op.mime(source))
+                op.createFolder(destinationFolder, stagedName)
+            else op.createFile(destinationFolder, stagedName, op.mime(source))
             createdItems.add(requireNotNull(created))
 
             suspend fun visit(input: T, output: T, depth: Int) {
@@ -121,7 +193,24 @@ class SafeCopy<T>(private val op: CopyOperations<T>) {
                 }
             }
             visit(source, requireNotNull(created), 0)
-            return totals
+            replaceTarget?.let { existing ->
+                currentCoroutineContext().ensureActive()
+                // Refuse stale confirmation: replacing a newly changed target
+                // could destroy data the user never intended to replace.
+                val current = op.findChild(destinationFolder, selectedName)
+                if (current == null || op.identity(current) != op.identity(existing) ||
+                    (oldSize >= 0 && op.size(current) != oldSize) ||
+                    (oldModified > 0 && op.modified(current) != oldModified) ||
+                    !MessageDigest.isEqual(oldHash, calculateHash(current))
+                ) throw ExpectedFileOperationException(
+                    "Destination changed since confirmation. Review it and retry."
+                )
+                op.atomicReplace(requireNotNull(created), current)
+            }
+            return totals.copy(
+                replacedExisting = replaceTarget != null,
+                renamedTo = selectedName.takeIf { it != originalName }
+            )
         } catch (failure: Throwable) {
             // A failed copy must not be reported as successful. The source is
             // never touched. If cleanup fails, warn that the destination may
