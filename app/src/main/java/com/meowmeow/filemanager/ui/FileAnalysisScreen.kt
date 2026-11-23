@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.activity.compose.BackHandler
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.InsertDriveFile
@@ -30,6 +31,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -69,6 +71,12 @@ fun FileAnalysisScreen(
 
     val showingCurrent = state.complete && state.kind == mode &&
         state.scope == scope && (mode != AnalysisKind.LARGE || state.thresholdMiB == threshold)
+
+    BackHandler(onBack = onBack)
+    // Switching to another tab also cancels a live scan.
+    DisposableEffect(Unit) {
+        onDispose { onCancel() }
+    }
 
     Scaffold(topBar = {
         TopAppBar(
