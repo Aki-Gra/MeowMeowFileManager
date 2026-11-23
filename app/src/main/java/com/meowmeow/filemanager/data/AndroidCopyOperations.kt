@@ -12,6 +12,8 @@ import java.io.InputStream
 import java.io.OutputStream
 import java.nio.file.Files
 import java.nio.file.LinkOption
+import java.nio.file.StandardCopyOption
+import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.StandardOpenOption
 import java.util.Locale
 
@@ -168,6 +170,37 @@ class AndroidCopyOperations(context: Context) : BulkOperations<CopyNode> {
             val selected = doc(file)
             resolver.openOutputStream(selected.uri, "wt")
                 ?: throw IOException("Could not write the destination file.")
+        }
+    }
+
+    // On direct shared storage we can stage and verify a new file before
+    // swapping the directory entry atomically. SAF does not guarantee that;
+    // never truncate an existing SAF document to simulate safe replacement.
+    override fun supportsAtomicReplace(folder: CopyNode): Boolean =
+        folder is CopyNode.Device && checked(folder).isDirectory &&
+            checked(folder).canWrite()
+
+    override fun atomicReplace(staged: CopyNode, existing: CopyNode) {
+        if (staged !is CopyNode.Device || existing !is CopyNode.Device)
+            throw ExpectedFileOperationException(
+                "Safe replacement isn't supported by this folder. Choose Rename."
+            )
+        val source = checked(staged)
+        val target = checked(existing)
+        if (!source.isFile || !target.isFile ||
+            source.parentFile != target.parentFile ||
+            source == target)
+            throw ExpectedFileOperationException("Cannot safely replace this item.")
+        try {
+            Files.move(
+                source.toPath(), target.toPath(),
+                StandardCopyOption.ATOMIC_MOVE,
+                StandardCopyOption.REPLACE_EXISTING
+            )
+        } catch (_: AtomicMoveNotSupportedException) {
+            throw ExpectedFileOperationException(
+                "This storage doesn't support safe replacement. Choose Rename."
+            )
         }
     }
 
