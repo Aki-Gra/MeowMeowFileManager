@@ -62,7 +62,9 @@ class AndroidCopyOperations(context: Context) : BulkOperations<CopyNode> {
 
     override fun size(item: CopyNode): Long = when (item) {
         is CopyNode.Device -> checked(item).length()
-        is CopyNode.Scoped -> doc(item).length().takeIf { it > 0L } ?: -1L
+        // A valid zero-byte document is still a file eligible for duplicate analysis.
+        // Providers returning an unknown length as zero are checked against bytes read.
+        is CopyNode.Scoped -> doc(item).length().coerceAtLeast(0L)
     }
 
     override fun modified(item: CopyNode): Long = when (item) {

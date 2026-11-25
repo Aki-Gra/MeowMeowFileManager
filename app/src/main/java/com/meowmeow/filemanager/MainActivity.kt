@@ -174,6 +174,7 @@ class MainActivity : ComponentActivity() {
                     bottomBar = {
                         NavigationBar {
                             NavigationBarItem(
+                                enabled = !analysisState.isDeleting,
                                 selected = page == Page.FILES,
                                 onClick = {
                                     if (page != Page.FILES && usingDevice && allFilesGranted) device.refresh()
@@ -183,18 +184,21 @@ class MainActivity : ComponentActivity() {
                                 label = { Text("Files") }
                             )
                             NavigationBarItem(
+                                enabled = !analysisState.isDeleting,
                                 selected = page == Page.STORAGE,
                                 onClick = { page = Page.STORAGE },
                                 icon = { Icon(Icons.Default.Storage, contentDescription = null) },
                                 label = { Text("Storage") }
                             )
                             NavigationBarItem(
+                                enabled = !analysisState.isDeleting,
                                 selected = page == Page.CLEANUP || page == Page.ANALYSIS,
                                 onClick = { page = Page.CLEANUP },
                                 icon = { Icon(Icons.Default.CleaningServices, contentDescription = null) },
                                 label = { Text("Cleanup") }
                             )
                             NavigationBarItem(
+                                enabled = !analysisState.isDeleting,
                                 selected = page == Page.SETTINGS,
                                 onClick = { page = Page.SETTINGS },
                                 icon = { Icon(Icons.Default.Settings, contentDescription = null) },
