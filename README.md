@@ -117,3 +117,8 @@ On **single Copy** and **Bulk Copy**, a duplicate filename opens a choice for **
 ## v0.2 Milestone 4 — File analysis (device QA pending)
 
 **Cleanup → Find duplicates and large files** provides two read-only scans: large files with a 10 / 50 / 100 / 500 / 1024 MiB minimum, and exact duplicates verified by size and streamed SHA-256. Both support current folder, current subtree, or selected storage root subtree, direct shared-storage or SAF-granted access, progress, cancel, and incomplete-result warnings. Every scan is limited to 2,000 folders, 20,000 entries, and 300 displayed matches; hashing has a 20 GiB budget. No files are automatically removed and no private paths/content/hashes are persisted or logged. Existing Downloads cleanup is unchanged. Device QA is required before merge.
+
+
+### Remove duplicates directly (device QA pending)
+
+Each exact-duplicate row now has **Delete**, and groups have checkboxes plus **Select all copies** and **Delete selected**. Both one-copy and all-copies deletion require explicit permanent confirmation, with a stronger warning when no copy will remain. Before removing each file, MeowMeow revalidates its size, identity, name and SHA-256 content against the scan. Changed files are skipped; completed deletions remain permanent. Results update and rescan is recommended. No deletion is performed merely by scanning.

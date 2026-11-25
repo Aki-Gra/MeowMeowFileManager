@@ -223,3 +223,24 @@ The user reported the Milestone 3 device test passed, with one UX request: **Cop
 - [ ] Tap results to open files and verify neither scanner creates, changes or deletes anything.
 - [ ] Regression: existing Downloads cleanup, Search and its scopes, ordinary and bulk copy/move/delete, Replace/Rename/Skip, Storage and privacy-safe diagnostics.
 - [ ] Check narrow portrait and dark theme. Test the APK built from the matching PR head before accepting Milestone 4.
+
+
+## Follow-up: delete one or multiple exact duplicates
+
+**Device feedback, 25 November 2026:** Duplicate scan works. User requested deleting one or both copies from the results.
+
+**Implementation (device QA pending):**
+- Each duplicate-file row has its own **Delete** icon with a permanent-deletion confirmation.
+- Every duplicate group has checkboxes, **Select all copies / Deselect all** and **Delete selected (N)**. Users can deliberately remove one, several, or all copies. The confirmation explicitly warns if **every copy** in the group is selected.
+- Each file is verified again immediately before deletion: storage identity, name, type, size, modification timestamp where available, and a freshly calculated SHA-256 matching the scan's original fingerprint. Changed files are skipped.
+- Deletion is sequential with processed, deleted, changed/skipped and failed counts, and a **Stop remaining deletions** action. Completed deletions are permanent, not reversed. Deleted files and groups with fewer than two surviving files disappear from the displayed results.
+- Duplicate scanning remains read-only. No automatic deletion, trash or undo. Expected stale-file skips are ordinary validation, while genuine failures use sanitized MM-DUP-DEL diagnostics without filenames, paths, contents, hashes or raw exceptions.
+
+**Device QA (use disposable files only):**
+- [ ] Scan two identical files. Tap Delete beside one, cancel confirmation and verify both remain. Confirm on the second attempt; only the chosen file should disappear.
+- [ ] Rescan fresh duplicates, check both and choose Delete selected (2). Verify the every-copy warning appears; confirm and check both are deleted.
+- [ ] Scan three duplicates, delete two, check the remaining one is unaffected.
+- [ ] Modify a selected file after the scan but before deletion (same byte count, different content). It must be skipped; nothing else should be deleted.
+- [ ] Test SAF picker access, permission revocation and inaccessible items; check failed counts and no unexpected changes.
+- [ ] Try Stop remaining deletions on a large disposable set. Completed work remains and unprocessed work stops.
+- [ ] Test portrait/dark mode, group display after removal, rescan, and regressions for Search, Copy Replace/Rename/Skip, bulk operations and existing Downloads cleanup.
