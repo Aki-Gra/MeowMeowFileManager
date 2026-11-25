@@ -349,7 +349,14 @@ class MainActivity : ComponentActivity() {
                                     analysis.scan(folder, kind, scope, minimumMiB)
                                 },
                                 onCancel = analysis::cancel,
-                                onOpenFile = ::openFile
+                                onOpenFile = ::openFile,
+                                onToggleDuplicate = analysis::toggleDuplicate,
+                                onSelectGroup = analysis::selectDuplicateGroup,
+                                onRequestDelete = analysis::requestDelete,
+                                onRequestSingleDelete = analysis::requestSingleDelete,
+                                onConfirmDelete = analysis::confirmDelete,
+                                onDismissDelete = analysis::cancelDeleteConfirmation,
+                                onCancelDeletion = analysis::cancelDeletion
                             )
                             Page.CLEANUP -> CleanupScreen(
                                 state = cleanupState,

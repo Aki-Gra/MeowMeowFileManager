@@ -43,6 +43,7 @@ enum class ErrorOperation(val code: String, val title: String) {
     FS_DELETE("FS-DEL", "Delete device item"),
     FS_SEARCH("FS-SEARCH", "Search device storage"),
     DUPLICATE_SCAN("DUP-SCAN", "Find exact duplicates"),
+    DUPLICATE_DELETE("DUP-DEL", "Delete verified duplicate files"),
     LARGE_FILE_SCAN("LARGE-SCAN", "Scan for large files"),
     SAF_SEARCH("SAF-SEARCH", "Search chosen folder"),
     CLEANUP_SCAN("CLN-SCAN", "Scan large downloads"),
