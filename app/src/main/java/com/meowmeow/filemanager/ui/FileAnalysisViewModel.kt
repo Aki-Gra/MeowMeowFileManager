@@ -227,6 +227,19 @@ class FileAnalysisViewModel(
         _state.value = current.copy(pendingDeleteIds = selected, deleteNotice = null)
     }
 
+    /** Individual Delete button beside a duplicate; never auto-confirms. */
+    fun requestSingleDelete(group: DuplicateGroupResult, id: String) {
+        val current = _state.value
+        if (!current.complete || current.kind != AnalysisKind.DUPLICATES ||
+            current.isDeleting || current.pendingDeleteIds.isNotEmpty()) return
+        val groupIds = group.members.map { it.entry.id }.toSet()
+        if (id !in groupIds || id !in verifiedTargets) return
+        if (current.duplicateGroups.none {
+            it.members.map { member -> member.entry.id }.toSet() == groupIds
+        }) return
+        _state.value = current.copy(pendingDeleteIds = setOf(id), deleteNotice = null)
+    }
+
     fun cancelDeleteConfirmation() {
         if (_state.value.isDeleting) return
         _state.value = _state.value.copy(pendingDeleteIds = emptySet())
