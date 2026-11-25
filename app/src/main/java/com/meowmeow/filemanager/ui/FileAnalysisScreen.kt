@@ -15,7 +15,11 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.InsertDriveFile
+import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material3.AssistChip
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -54,7 +58,14 @@ fun FileAnalysisScreen(
     onBack: () -> Unit,
     onStart: (AnalysisKind, SearchScope, Int) -> Unit,
     onCancel: () -> Unit,
-    onOpenFile: (FileEntry) -> Unit
+    onOpenFile: (FileEntry) -> Unit,
+    onToggleDuplicate: (String) -> Unit,
+    onSelectGroup: (List<String>) -> Unit,
+    onRequestDelete: (DuplicateGroupResult) -> Unit,
+    onRequestSingleDelete: (DuplicateGroupResult, String) -> Unit,
+    onConfirmDelete: () -> Unit,
+    onDismissDelete: () -> Unit,
+    onCancelDeletion: () -> Unit
 ) {
     var mode by remember { mutableStateOf(AnalysisKind.LARGE) }
     var scope by remember { mutableStateOf(SearchScope.CURRENT_FOLDER) }
@@ -72,7 +83,7 @@ fun FileAnalysisScreen(
     val showingCurrent = state.complete && state.kind == mode &&
         state.scope == scope && (mode != AnalysisKind.LARGE || state.thresholdMiB == threshold)
 
-    BackHandler(onBack = onBack)
+    BackHandler { if (!state.isDeleting) onBack() }
     // Switching to another tab also cancels a live scan.
     DisposableEffect(Unit) {
         onDispose { onCancel() }
@@ -82,7 +93,7 @@ fun FileAnalysisScreen(
         TopAppBar(
             title = { Text("Find files") },
             navigationIcon = {
-                IconButton(onClick = onBack) {
+                IconButton(onClick = onBack, enabled = !state.isDeleting) {
                     Icon(Icons.Default.ArrowBack, contentDescription = "Back to Cleanup")
                 }
             }
@@ -93,16 +104,16 @@ fun FileAnalysisScreen(
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Text("Storage analysis", style = MaterialTheme.typography.titleMedium)
-            Text("Read-only scans. Nothing is deleted or changed automatically.",
+            Text("Scans are read-only. Duplicate files can be deleted after confirmation.",
                 style = MaterialTheme.typography.bodySmall)
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 FilterChip(
-                    selected = mode == AnalysisKind.LARGE, enabled = !state.isRunning,
+                    selected = mode == AnalysisKind.LARGE, enabled = !state.isRunning && !state.isDeleting,
                     onClick = { mode = AnalysisKind.LARGE },
                     label = { Text("Large files") }
                 )
                 FilterChip(
-                    selected = mode == AnalysisKind.DUPLICATES, enabled = !state.isRunning,
+                    selected = mode == AnalysisKind.DUPLICATES, enabled = !state.isRunning && !state.isDeleting,
                     onClick = { mode = AnalysisKind.DUPLICATES },
                     label = { Text("Exact duplicates") }
                 )
@@ -110,7 +121,7 @@ fun FileAnalysisScreen(
             Text("Scan location", style = MaterialTheme.typography.labelMedium)
             Box {
                 AssistChip(
-                    enabled = !state.isRunning, onClick = { locationMenu = true },
+                    enabled = !state.isRunning && !state.isDeleting, onClick = { locationMenu = true },
                     label = { Text(label(scope)) }
                 )
                 DropdownMenu(expanded = locationMenu,
@@ -135,7 +146,7 @@ fun FileAnalysisScreen(
                     Text("Minimum file size: ", style = MaterialTheme.typography.bodyMedium)
                     Box {
                         AssistChip(
-                            enabled = !state.isRunning, onClick = { thresholdMenu = true },
+                            enabled = !state.isRunning && !state.isDeleting, onClick = { thresholdMenu = true },
                             label = { Text("$threshold MiB") }
                         )
                         DropdownMenu(expanded = thresholdMenu,
@@ -159,7 +170,7 @@ fun FileAnalysisScreen(
             Row(verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Button(
-                    enabled = !state.isRunning && sourcePath.isNotEmpty(),
+                    enabled = !state.isRunning && !state.isDeleting && sourcePath.isNotEmpty(),
                     onClick = { onStart(mode, scope, threshold) }
                 ) { Text(if (showingCurrent) "Scan again" else "Scan files") }
                 if (state.isRunning) {
@@ -174,6 +185,16 @@ fun FileAnalysisScreen(
                             " · ${state.hashedFiles} files hashed" else "",
                     style = MaterialTheme.typography.bodySmall
                 )
+            }
+            if (state.isDeleting) {
+                LinearProgressIndicator(Modifier.fillMaxWidth())
+                val progress = state.deleteSummary
+                Text("Deleting selected files: ${progress?.completed?.size ?: 0}/${progress?.total ?: 0}")
+                OutlinedButton(onClick = onCancelDeletion) { Text("Stop remaining deletions") }
+            }
+            state.deleteNotice?.let {
+                Text(it, style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error)
             }
             state.notice?.let {
                 Text(it, color = MaterialTheme.colorScheme.error,
@@ -206,7 +227,8 @@ fun FileAnalysisScreen(
                 Text(
                     if (state.kind == AnalysisKind.DUPLICATES)
                         "Potential savings assume keeping one copy per group. " +
-                            "Review each file before deleting anything."
+                            "Select files to delete, or use Delete beside one copy. " +
+                            "Deleting is permanent; you can delete every copy if you confirm."
                     else "Tap a result to open it. To remove files, review them in Files.",
                     style = MaterialTheme.typography.bodySmall
                 )
@@ -233,8 +255,62 @@ fun FileAnalysisScreen(
                                 modifier = Modifier.padding(top = 10.dp, bottom = 4.dp),
                                 style = MaterialTheme.typography.titleSmall
                             )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                val groupIds = group.members.map { it.entry.id }
+                                TextButton(
+                                    enabled = !state.isDeleting,
+                                    onClick = { onSelectGroup(groupIds) }
+                                ) {
+                                    Text(if (groupIds.all { it in state.selectedDuplicateIds })
+                                        "Deselect all" else "Select all copies")
+                                }
+                                val selectedCount = groupIds.count {
+                                    it in state.selectedDuplicateIds
+                                }
+                                Button(
+                                    enabled = !state.isDeleting && selectedCount > 0,
+                                    onClick = { onRequestDelete(group) }
+                                ) { Text("Delete selected ($selectedCount)") }
+                            }
                             group.members.forEach { hit ->
-                                AnalysisFileRow(hit, onOpenFile)
+                                ListItem(
+                                    modifier = Modifier.fillMaxWidth()
+                                        .clickable(enabled = !state.isDeleting) {
+                                            onOpenFile(hit.entry)
+                                        },
+                                    leadingContent = {
+                                        Checkbox(
+                                            checked = hit.entry.id in state.selectedDuplicateIds,
+                                            enabled = !state.isDeleting,
+                                            onCheckedChange = {
+                                                onToggleDuplicate(hit.entry.id)
+                                            }
+                                        )
+                                    },
+                                    headlineContent = {
+                                        Text(hit.entry.name, maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis)
+                                    },
+                                    supportingContent = {
+                                        Text(humanSize(hit.entry.sizeBytes) + " · " + hit.location,
+                                            maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                    },
+                                    trailingContent = {
+                                        IconButton(
+                                            enabled = !state.isDeleting,
+                                            onClick = {
+                                                onRequestSingleDelete(group, hit.entry.id)
+                                            }
+                                        ) {
+                                            Icon(Icons.Default.DeleteOutline,
+                                                contentDescription = "Delete " + hit.entry.name)
+                                        }
+                                    }
+                                )
                             }
                             HorizontalDivider()
                         }
@@ -246,6 +322,47 @@ fun FileAnalysisScreen(
                 }
             }
         }
+    }
+
+    val pending = state.pendingDeleteIds
+    if (pending.isNotEmpty()) {
+        val affected = state.duplicateGroups.flatMap { it.members }
+            .filter { it.entry.id in pending }
+        val allInGroup = state.duplicateGroups.any { group ->
+            val ids = group.members.map { it.entry.id }.toSet()
+            ids.isNotEmpty() && pending.containsAll(ids)
+        }
+        AlertDialog(
+            onDismissRequest = onDismissDelete,
+            title = { Text("Permanently delete ${pending.size} file(s)?") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        if (allInGroup)
+                            "You selected EVERY copy in this duplicate group. No copy will remain."
+                        else "Only the selected files will be deleted.",
+                        color = if (allInGroup) MaterialTheme.colorScheme.error
+                            else MaterialTheme.colorScheme.onSurface
+                    )
+                    affected.take(6).forEach { hit ->
+                        Text("• " + hit.entry.name + " · " + hit.location,
+                            maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    }
+                    if (affected.size > 6) Text("…and ${affected.size - 6} more")
+                    Text(
+                        "This is permanent. There is no recycle bin or undo. " +
+                            "Files that changed after scanning will be skipped.",
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+            },
+            confirmButton = {
+                Button(onClick = onConfirmDelete) { Text("Delete permanently") }
+            },
+            dismissButton = {
+                TextButton(onClick = onDismissDelete) { Text("Cancel") }
+            }
+        )
     }
 }
 
