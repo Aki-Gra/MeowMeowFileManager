@@ -13,11 +13,14 @@ data class AnalysisItem<T>(
     val node: T,
     val name: String,
     val relativeFolder: String,
-    val size: Long
+    val size: Long,
+    val modifiedAtMillis: Long = 0L
 )
 data class DuplicateGroup<T>(
     val members: List<AnalysisItem<T>>,
-    val fileSize: Long
+    val fileSize: Long,
+    /** In-memory only: used to reverify each selected file before deletion. */
+    val sha256: List<Byte> = emptyList()
 ) {
     val estimatedReclaimableBytes: Long get() =
         fileSize.coerceAtLeast(0) * (members.size - 1).toLong()
@@ -101,7 +104,8 @@ class FileAnalysisScanner<T>(private val ops: CopyOperations<T>) {
                         } else if (kind == AnalysisKind.DUPLICATES || size >= minimumBytes) {
                             candidates.add(Sized(
                                 AnalysisItem(child, ops.name(child),
-                                    next.relativeFolder.ifEmpty { "Selected scope" }, size),
+                                    next.relativeFolder.ifEmpty { "Selected scope" }, size,
+                                    ops.modified(child)),
                                 ops.modified(child)
                             ))
                         }
@@ -176,7 +180,8 @@ class FileAnalysisScanner<T>(private val ops: CopyOperations<T>) {
                         hashStopped = true
                         break@sizeLoop
                     }
-                    groups.add(DuplicateGroup(matched.toList(), size))
+                    val fingerprint = byHash.entries.first { it.value === matched }.key
+                    groups.add(DuplicateGroup(matched.toList(), size, fingerprint.bytes))
                     resultsCount += matched.size
                 }
             }
