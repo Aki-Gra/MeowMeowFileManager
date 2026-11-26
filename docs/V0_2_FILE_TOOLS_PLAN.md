@@ -263,3 +263,26 @@ The user reported the Milestone 3 device test passed, with one UX request: **Cop
 - [ ] Verify three scan scopes, Large files thresholds, group selection, Delete beside an individual duplicate and Delete selected still work.
 - [ ] During a multi-copy deletion, the bottom progress and Stop remaining deletions stay on screen when scrolled.
 - [ ] Test long group lists, system Back, empty results, landscape and dark mode without overlapping controls or clipping.
+
+
+## Pre-merge code-review fixes (26 Nov 2026)
+
+Six issues raised during the review of PR #3 have been addressed in the v0.2 feature branch:
+
+- **P1 — stale scan/deletion targets:** Leaving the analysis screen now resets both completed results and original in-memory delete handles. Browsing to another Files folder and reopening Cleanup therefore requires a fresh scan; old-folder deletion controls cannot reappear.
+- **P1 — SAF folder deletion:** DocumentFile.listFiles() can conceal a provider-query failure behind an empty array. Before deleting any SAF directory, the app now directly queries DocumentsContract for children. A null/throwing query, an unsupported URI, or a nonempty result **blocks the directory deletion** instead of assuming it is safe. Individual SAF file deletion is unchanged.
+- **P1 — provider calls on UI thread:** The duplicate result snapshot, document identities and MIME metadata are now prepared entirely on Dispatchers.IO, then published as plain immutable UI data.
+- **P2 — hashing limit:** The actual bytes read are counted continuously toward the 20 GiB cap, with space reserved for an EOF probe. An inaccurate provider-reported size is never treated as a verified duplicate, and the scan reports incomplete/changed results.
+- **P2 — bulk result accounting:** Per-item identity retrieval now runs inside the error boundary. Unreadable/revoked selected items get failed results without aborting subsequent items. Repeated identities produce explicit skipped results so processed + remaining counts stay consistent.
+- **P2 — large group rendering:** Duplicate results now render as distinct LazyColumn header/member/divider items with stable keys. Group and row composables have been extracted into a separate source file.
+
+**Additional device QA before merging (disposable test items only):**
+- [ ] Scan folder A for duplicates, return to Files and browse folder B. Reopen analysis: folder A results and deletion controls must **not** remain; scan B afresh.
+- [ ] Use the SAF picker with a provider which fails/refuses directory enumeration; an SAF directory must not be deleted on an unknown listing. Delete of an ordinary permitted SAF file must still work.
+- [ ] Scan a SAF tree with many files and validate that the UI remains responsive while results load.
+- [ ] On a large duplicate group, scroll quickly in portrait and landscape; items should render smoothly and Delete/checkbox selection must remain accurate.
+- [ ] Simulate an inaccessible file during bulk copy/delete; other selected files should continue and the failed/skipped totals must add up to the selected count.
+- [ ] Confirm hash-budget/inaccurate-length scans show incomplete results instead of false duplicates; cancel during hashing and verify no modifications.
+- [ ] Re-test copy conflict Replace/Rename/Skip, bulk move, delete confirmations, direct and SAF browsing, and privacy-safe error logs.
+
+The specific regressions for hash metadata underreporting and per-item bulk identity/duplicate accounting are covered by new JVM tests. The SAF failure and UI-thread cases additionally require Android device/provider testing: local fake-storage JVM tests alone are not sufficient to validate real providers.
