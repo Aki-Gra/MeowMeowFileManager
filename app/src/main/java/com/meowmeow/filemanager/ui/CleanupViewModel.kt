@@ -102,6 +102,7 @@ class CleanupViewModel(
         task?.cancel()
         _state.value = _state.value.copy(isLoading = true, message = null)
         val deleteTask = viewModelScope.launch(start = CoroutineStart.LAZY) {
+            try {
             val (successes, failed) = withContext(Dispatchers.IO) {
                 val failureMessages = mutableListOf<String>()
                 var deleted = 0
@@ -136,6 +137,12 @@ class CleanupViewModel(
             }.onFailure {
                 errorLog.record(ErrorArea.CLEANUP_SCAN, it, operation = ErrorOperation.CLEANUP_SCAN)
                 _state.value = CleanupUiState(message = "Some files were processed, but refreshing failed.")
+            }
+            } catch (cancelled: CancellationException) {
+                _state.value = CleanupUiState(
+                    message = "Cleanup stopped. Completed deletions remain. Scan again to refresh."
+                )
+                throw cancelled
             }
         }
         task = deleteTask
