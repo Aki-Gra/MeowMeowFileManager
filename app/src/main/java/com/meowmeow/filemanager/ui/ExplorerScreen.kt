@@ -804,7 +804,6 @@ private fun FileRow(
                         onRename = onRename,
                         onDelete = onDelete
                     )
-                    }
                 }
             }
         }

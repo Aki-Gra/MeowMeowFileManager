@@ -125,7 +125,6 @@ internal fun ExplorerFileTile(
                         onRename = onRename,
                         onDelete = onDelete
                     )
-                    }
                 }
             }
         }
