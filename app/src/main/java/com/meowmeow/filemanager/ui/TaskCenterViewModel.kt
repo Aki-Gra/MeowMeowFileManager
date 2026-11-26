@@ -40,6 +40,9 @@ data class TaskCenterState(
     val notice: String? = null
 ) {
     val runningCount: Int get() = tasks.count { it.active }
+
+    fun latestOutdated(vararg kinds: BackgroundTaskKind): Boolean =
+        tasks.lastOrNull { it.kind in kinds }?.status == BackgroundTaskStatus.OUTDATED
 }
 
 /** Tasks outlive individual tabs but not the Android app process. */

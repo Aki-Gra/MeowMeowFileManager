@@ -74,6 +74,8 @@ class CopyViewModel(
         _state.value = CopyUiState(sourceName = displayName)
     }
 
+    fun pendingSource(): CopyPlace? = selected
+
     fun paste(destination: CopyPlace?, onSuccess: () -> Unit) {
         if (_state.value.isCopying) return
         val source = selected ?: return

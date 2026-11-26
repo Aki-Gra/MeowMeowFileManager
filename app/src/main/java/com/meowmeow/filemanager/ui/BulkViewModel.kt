@@ -171,6 +171,14 @@ class BulkViewModel(
         )
     }
 
+    /** The precise sources/destination for mutation conflict validation. */
+    fun mutationPlaces(): List<CopyPlace> = when (_state.value.action) {
+        BulkAction.COPY -> listOfNotNull(destination)
+        BulkAction.MOVE -> chosen.values.map { it.first } + listOfNotNull(destination)
+        BulkAction.DELETE -> chosen.values.map { it.first }
+        null -> emptyList()
+    }
+
     fun confirm(onFinished: () -> Unit) {
         if (_state.value.stage != BulkStage.REVIEW) return
         val action = _state.value.action ?: return

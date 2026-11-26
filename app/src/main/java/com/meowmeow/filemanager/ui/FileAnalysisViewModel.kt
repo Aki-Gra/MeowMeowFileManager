@@ -297,6 +297,13 @@ class FileAnalysisViewModel(
         _state.value = _state.value.copy(pendingDeleteIds = emptySet())
     }
 
+    /** Snapshot of confirmed duplicate-delete locations, never exposed as paths in logs. */
+    fun pendingDeleteScopes(): List<com.meowmeow.filemanager.model.TaskScope> =
+        _state.value.pendingDeleteIds.mapNotNull { verifiedTargets[it] }
+            .map { target ->
+                copyTaskScope(CopyPlace(target.node, "analysis", emptyList()))
+            }
+
     fun confirmDelete() {
         val current = _state.value
         if (current.isRunning || current.isDeleting || current.pendingDeleteIds.isEmpty()) return
