@@ -53,7 +53,6 @@ import com.meowmeow.filemanager.diagnostics.ErrorOperation
 import com.meowmeow.filemanager.ui.resultUnlessCancelled
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import kotlin.math.abs
 
 private sealed interface Preview {
     data object Loading : Preview
@@ -254,10 +253,15 @@ private fun PdfReader(
                             },
                             onDragEnd = {
                                 // Right-to-left: next page; left-to-right: previous.
-                                if (abs(distance) >= swipeThreshold) {
-                                    if (distance < 0 && pageIndex + 1 < total) pageIndex++
-                                    if (distance > 0 && pageIndex > 0) pageIndex--
-                                }
+                                pageIndex = swipeTargetIndex(
+                                    currentIndex = pageIndex,
+                                    total = total,
+                                    dragX = distance,
+                                    dragY = 0f,
+                                    minimumDistance = swipeThreshold,
+                                    zoomed = false,
+                                    multiTouch = false
+                                )
                             }
                         )
                     }

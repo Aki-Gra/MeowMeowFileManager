@@ -44,7 +44,6 @@ import com.meowmeow.filemanager.diagnostics.ErrorOperation
 import com.meowmeow.filemanager.ui.resultUnlessCancelled
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import kotlin.math.abs
 import kotlin.math.min
 import kotlin.math.roundToInt
 
@@ -186,11 +185,18 @@ internal fun ImageReader(
 
                                 // Horizontal, deliberate one-finger swipe at fit-to-screen.
                                 // A pinch or a zoomed image must never change the photo.
-                                if (!startedZoomed && !hadMultipleFingers && scale <= 1.01f &&
-                                    abs(horizontal) >= threshold &&
-                                    abs(horizontal) > abs(vertical) * 1.3f) {
-                                    if (horizontal < 0f) onNext?.invoke()
-                                    else onPrevious?.invoke()
+                                if (galleryPosition != null && galleryCount != null) {
+                                    val destination = swipeTargetIndex(
+                                        currentIndex = galleryPosition - 1,
+                                        total = galleryCount,
+                                        dragX = horizontal,
+                                        dragY = vertical,
+                                        minimumDistance = threshold,
+                                        zoomed = startedZoomed || scale > 1.01f,
+                                        multiTouch = hadMultipleFingers
+                                    )
+                                    if (destination > galleryPosition - 1) onNext?.invoke()
+                                    else if (destination < galleryPosition - 1) onPrevious?.invoke()
                                 }
                             }
                         },
