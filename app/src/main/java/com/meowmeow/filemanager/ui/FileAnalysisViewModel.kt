@@ -26,6 +26,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -73,7 +74,8 @@ private data class PreparedAnalysis(
 
 class FileAnalysisViewModel(
     private val ops: AndroidCopyOperations,
-    private val errors: ErrorLogStore
+    private val errors: ErrorLogStore,
+    private val taskCenter: TaskCenterViewModel
 ) : ViewModel() {
     private val _state = MutableStateFlow(FileAnalysisUiState())
     val state: StateFlow<FileAnalysisUiState> = _state
@@ -102,6 +104,7 @@ class FileAnalysisViewModel(
 
     fun scan(root: CopyPlace?, kind: AnalysisKind, scope: SearchScope, minimumMiB: Int) {
         if (_state.value.isDeleting) return
+        if (root != null && !taskCenter.allowScan("Start file analysis", copyTaskScope(root))) return
         verifiedTargets.clear()
         scanGeneration++
         val generation = scanGeneration
@@ -113,7 +116,8 @@ class FileAnalysisViewModel(
             )
             return
         }
-        job = viewModelScope.launch {
+        var taskToken = -1L
+        val scanTask = viewModelScope.launch(start = CoroutineStart.LAZY) {
             _state.value = FileAnalysisUiState(
                 isRunning = true, kind = kind, scope = scope, thresholdMiB = minimumMiB
             )
@@ -131,6 +135,7 @@ class FileAnalysisViewModel(
                                     itemsVisited = entries,
                                     hashedFiles = hashed
                                 )
+                                taskCenter.progress(taskToken, folders, entries, hashed)
                             }
                         }
                     )
@@ -208,7 +213,12 @@ class FileAnalysisViewModel(
                     reclaimableBytes = prepared.groups.sumOf { it.reclaimableBytes }
                 )
             } catch (_: CancellationException) {
-                // Expected user navigation/cancellation: never log.
+                // Explicit cancellation or permission loss; no error-log entry.
+                if (generation == scanGeneration)
+                    _state.value = FileAnalysisUiState(
+                        kind = kind, scope = scope, thresholdMiB = minimumMiB,
+                        notice = "Scan stopped. No files were changed."
+                    )
             } catch (failure: Exception) {
                 errors.record(
                     ErrorArea.FILE_ANALYSIS, failure,
@@ -223,6 +233,23 @@ class FileAnalysisViewModel(
                 if (generation == scanGeneration) job = null
             }
         }
+        job = scanTask
+        val token = taskCenter.begin(
+            if (kind == AnalysisKind.DUPLICATES) BackgroundTaskKind.DUPLICATE_SCAN
+            else BackgroundTaskKind.LARGE_FILE_SCAN,
+            copyTaskScope(root),
+            cancel = { scanTask.cancel() }
+        )
+        taskToken = token
+        scanTask.invokeOnCompletion { cause ->
+            taskCenter.complete(
+                token,
+                success = cause == null && _state.value.complete &&
+                    _state.value.kind == kind,
+                wasCancelled = cause is CancellationException || scanTask.isCancelled
+            )
+        }
+        scanTask.start()
     }
 
     fun toggleDuplicate(id: String) {
@@ -276,6 +303,13 @@ class FileAnalysisViewModel(
         _state.value = _state.value.copy(pendingDeleteIds = emptySet())
     }
 
+    /** Snapshot of confirmed duplicate-delete locations, never exposed as paths in logs. */
+    fun pendingDeleteScopes(): List<com.meowmeow.filemanager.model.TaskScope> =
+        _state.value.pendingDeleteIds.mapNotNull { verifiedTargets[it] }
+            .map { target ->
+                copyTaskScope(CopyPlace(target.node, "analysis", emptyList()))
+            }
+
     fun confirmDelete() {
         val current = _state.value
         if (current.isRunning || current.isDeleting || current.pendingDeleteIds.isEmpty()) return
@@ -296,12 +330,14 @@ class FileAnalysisViewModel(
             deleteSummary = DuplicateDeleteSummary(total = selected.size),
             deleteNotice = null
         )
-        deleteJob = viewModelScope.launch {
+        var deleteTaskToken = -1L
+        val deletionTask = viewModelScope.launch(start = CoroutineStart.LAZY) {
             try {
                 val summary = withContext(Dispatchers.IO) {
                     VerifiedDuplicateDeletion(ops).delete(selected) { progress ->
                         withContext(NonCancellable + Dispatchers.Main) {
                             applyDeletionProgress(progress, idsByIdentity)
+                            taskCenter.progress(deleteTaskToken, 0, progress.completed.size)
                         }
                     }
                 }
@@ -334,6 +370,26 @@ class FileAnalysisViewModel(
                 deleteJob = null
             }
         }
+        deleteJob = deletionTask
+        val scopes = selected.map { target ->
+            copyTaskScope(CopyPlace(target.node, "duplicate", emptyList()))
+        }
+        val token = taskCenter.begin(
+            BackgroundTaskKind.DUPLICATE_DELETE,
+            scopes.firstOrNull() ?: com.meowmeow.filemanager.model.TaskScope.Unknown,
+            affectedScopes = scopes, readOnly = false,
+            cancel = { deletionTask.cancel() }
+        )
+        deleteTaskToken = token
+        deletionTask.invokeOnCompletion { cause ->
+            taskCenter.complete(
+                token,
+                success = cause == null && _state.value.deleteSummary?.failed == 0 &&
+                    !_state.value.isDeleting,
+                wasCancelled = cause is CancellationException || deletionTask.isCancelled
+            )
+        }
+        deletionTask.start()
     }
 
     fun cancelDeletion() {
@@ -368,13 +424,13 @@ class FileAnalysisViewModel(
         )
     }
 
-    class Factory(context: Context): ViewModelProvider.Factory {
+    class Factory(context: Context, private val taskCenter: TaskCenterViewModel): ViewModelProvider.Factory {
         private val app = context.applicationContext
         @Suppress("UNCHECKED_CAST")
         override fun <T: ViewModel> create(modelClass: Class<T>): T {
             require(modelClass.isAssignableFrom(FileAnalysisViewModel::class.java))
             return FileAnalysisViewModel(
-                AndroidCopyOperations(app), (app as MeowMeowApp).errorLog
+                AndroidCopyOperations(app), (app as MeowMeowApp).errorLog, taskCenter
             ) as T
         }
     }

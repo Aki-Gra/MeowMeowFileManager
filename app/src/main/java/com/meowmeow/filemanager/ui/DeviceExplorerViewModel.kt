@@ -22,6 +22,8 @@ import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -29,7 +31,8 @@ import kotlinx.coroutines.launch
 /** A separate direct-file backend. The original SAF browser remains available as a fallback. */
 class DeviceExplorerViewModel(
     private val repository: LocalFileRepository,
-    private val errorLog: ErrorLogStore
+    private val errorLog: ErrorLogStore,
+    private val taskCenter: TaskCenterViewModel
 ) : ViewModel() {
     private val folders = mutableListOf<File>()
     private var scanJob: Job? = null
@@ -41,7 +44,6 @@ class DeviceExplorerViewModel(
     private val searchRoutes = mutableMapOf<String, List<File>>()
 
     fun openRoot() {
-        cancelSearch()
         if (!repository.hasAccess()) {
             _state.value = ExplorerUiState(isLoading = false)
             return
@@ -52,7 +54,6 @@ class DeviceExplorerViewModel(
     }
 
     fun openDownloads() {
-        cancelSearch()
         if (!repository.hasAccess()) return
         folders.clear()
         folders.add(repository.root())
@@ -62,7 +63,6 @@ class DeviceExplorerViewModel(
 
     fun openDirectory(entry: FileEntry) {
         if (!entry.isDirectory) return
-        cancelSearch()
         val target = runCatching { repository.fromEntry(entry) }
             .onFailure { errorLog.record(ErrorArea.DEVICE_BROWSING, it, operation = ErrorOperation.FS_OPEN_FOLDER) }
             .getOrNull() ?: return
@@ -73,13 +73,11 @@ class DeviceExplorerViewModel(
 
     fun navigateUp() {
         if (folders.size < 2) return
-        cancelSearch()
         folders.removeAt(folders.lastIndex)
         loadFolder()
     }
 
     fun refresh() {
-        cancelSearch()
         if (folders.isEmpty()) openRoot() else loadFolder()
     }
 
@@ -161,7 +159,9 @@ class DeviceExplorerViewModel(
             return
         }
         val startFolder = searchStartFolder(folders.firstOrNull(), folders.lastOrNull(), scope) ?: return
-        searchJob = viewModelScope.launch {
+        if (!taskCenter.allowScan("Search device files", deviceTaskScope(startFolder))) return
+        var taskToken = -1L
+        val searchTask = viewModelScope.launch(start = CoroutineStart.LAZY) {
             _search.value = FileSearchState(isRunning = true)
             val outcome = resultUnlessCancelled {
                 withContext(Dispatchers.IO) {
@@ -177,6 +177,7 @@ class DeviceExplorerViewModel(
                             _search.value = _search.value.copy(
                                 foldersVisited = visited, entriesVisited = examined
                             )
+                            taskCenter.progress(taskToken, visited, examined)
                         }
                     })
                 }
@@ -201,6 +202,23 @@ class DeviceExplorerViewModel(
                 )
             }
         }
+        searchJob = searchTask
+        val token = taskCenter.begin(
+            BackgroundTaskKind.DEVICE_SEARCH, deviceTaskScope(startFolder), cancel = { searchTask.cancel() }
+        )
+        taskToken = token
+        searchTask.invokeOnCompletion { cause ->
+            if (cause is CancellationException && searchJob === searchTask) {
+                _search.value = FileSearchState(notice = "Search stopped.")
+            }
+            taskCenter.complete(
+                token,
+                success = cause == null && _search.value.finished &&
+                    _search.value.notice == null,
+                wasCancelled = cause is CancellationException || searchTask.isCancelled
+            )
+        }
+        searchTask.start()
     }
 
     fun cancelSearch() {
@@ -256,12 +274,12 @@ class DeviceExplorerViewModel(
 
     fun clearError() { _state.value = _state.value.copy(errorMessage = null) }
 
-    class Factory(context: Context) : ViewModelProvider.Factory {
+    class Factory(context: Context, private val taskCenter: TaskCenterViewModel) : ViewModelProvider.Factory {
         private val errorLog = (context.applicationContext as MeowMeowApp).errorLog
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
             require(modelClass.isAssignableFrom(DeviceExplorerViewModel::class.java))
-            return DeviceExplorerViewModel(LocalFileRepository(), errorLog) as T
+            return DeviceExplorerViewModel(LocalFileRepository(), errorLog, taskCenter) as T
         }
     }
 }

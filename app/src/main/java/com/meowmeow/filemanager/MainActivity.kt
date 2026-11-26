@@ -8,12 +8,14 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Environment
 import android.provider.Settings
+import android.provider.DocumentsContract
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
+import androidx.compose.ui.Alignment
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
@@ -27,6 +29,7 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -41,6 +44,11 @@ import com.meowmeow.filemanager.diagnostics.ErrorOperation
 import com.meowmeow.filemanager.diagnostics.formatErrorLog
 import com.meowmeow.filemanager.diagnostics.suggestedErrorLogFileName
 import com.meowmeow.filemanager.model.FileEntry
+import com.meowmeow.filemanager.ui.TaskCenterViewModel
+import com.meowmeow.filemanager.ui.TaskCenterOverlay
+import com.meowmeow.filemanager.ui.BackgroundTaskKind
+import com.meowmeow.filemanager.ui.copyTaskScope
+import com.meowmeow.filemanager.ui.deviceTaskScope
 import com.meowmeow.filemanager.ui.CleanupScreen
 import com.meowmeow.filemanager.ui.CleanupViewModel
 import com.meowmeow.filemanager.ui.FileAnalysisViewModel
@@ -62,32 +70,45 @@ private enum class Page { FILES, STORAGE, CLEANUP, ANALYSIS, SETTINGS }
 
 class MainActivity : ComponentActivity() {
     private var allFilesGranted by mutableStateOf(false)
+    private val taskCenter by lazy {
+        ViewModelProvider(this)[TaskCenterViewModel::class.java]
+    }
 
     override fun onResume() {
         super.onResume()
         allFilesGranted = canBrowseSharedStorage()
+        val allowedSafTrees = contentResolver.persistedUriPermissions
+            .filter { it.isReadPermission }
+            .mapNotNull { permission ->
+                try {
+                    permission.uri.authority?.let { authority ->
+                        authority to DocumentsContract.getTreeDocumentId(permission.uri)
+                    }
+                } catch (_: Exception) { null }
+            }.toSet()
+        taskCenter.reconcileSafPermissions(allowedSafTrees)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val errorLog = (application as MeowMeowApp).errorLog
         val scoped = ViewModelProvider(
-            this, ExplorerViewModel.Factory(applicationContext)
+            this, ExplorerViewModel.Factory(applicationContext, taskCenter)
         )[ExplorerViewModel::class.java]
         val device = ViewModelProvider(
-            this, DeviceExplorerViewModel.Factory(applicationContext)
+            this, DeviceExplorerViewModel.Factory(applicationContext, taskCenter)
         )[DeviceExplorerViewModel::class.java]
         val cleanup = ViewModelProvider(
-            this, CleanupViewModel.Factory(applicationContext)
+            this, CleanupViewModel.Factory(applicationContext, taskCenter)
         )[CleanupViewModel::class.java]
         val analysis = ViewModelProvider(
-            this, FileAnalysisViewModel.Factory(applicationContext)
+            this, FileAnalysisViewModel.Factory(applicationContext, taskCenter)
         )[FileAnalysisViewModel::class.java]
         val copy = ViewModelProvider(
-            this, CopyViewModel.Factory(applicationContext)
+            this, CopyViewModel.Factory(applicationContext, taskCenter)
         )[CopyViewModel::class.java]
         val bulk = ViewModelProvider(
-            this, BulkViewModel.Factory(applicationContext)
+            this, BulkViewModel.Factory(applicationContext, taskCenter)
         )[BulkViewModel::class.java]
         val supported = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
 
@@ -98,12 +119,18 @@ class MainActivity : ComponentActivity() {
             val scopedSearch by scoped.search.collectAsStateWithLifecycle()
             val cleanupState by cleanup.state.collectAsStateWithLifecycle()
             val analysisState by analysis.state.collectAsStateWithLifecycle()
+            val taskState by taskCenter.state.collectAsStateWithLifecycle()
             val copyState by copy.state.collectAsStateWithLifecycle()
             val bulkState by bulk.state.collectAsStateWithLifecycle()
             val savedErrors by errorLog.entries.collectAsStateWithLifecycle()
             val errorLoggingEnabled by errorLog.enabled.collectAsStateWithLifecycle()
             var page by rememberSaveable { mutableStateOf(Page.FILES) }
             var usingDevice by rememberSaveable { mutableStateOf(canBrowseSharedStorage()) }
+            var previousAllFilesAccess by remember { mutableStateOf(allFilesGranted) }
+            LaunchedEffect(allFilesGranted) {
+                if (previousAllFilesAccess && !allFilesGranted) taskCenter.accessRevoked()
+                previousAllFilesAccess = allFilesGranted
+            }
             // Save the exact private, sanitized report that existed when Export was tapped.
             // Preserve across Activity recreation while the system Save dialog is open.
             var pendingExportText by rememberSaveable { mutableStateOf<String?>(null) }
@@ -151,7 +178,8 @@ class MainActivity : ComponentActivity() {
                 }
             }
             LaunchedEffect(page, allFilesGranted) {
-                if (page == Page.CLEANUP && allFilesGranted) cleanup.scan()
+                if (page == Page.CLEANUP && allFilesGranted &&
+                    !cleanupState.scanned && !cleanupState.isLoading) cleanup.scan()
             }
 
             val browseDevice = {
@@ -159,14 +187,18 @@ class MainActivity : ComponentActivity() {
                     usingDevice = true
                     device.openRoot()
                     page = Page.FILES
-                } else requestAllFilesAccess()
+                } else if (taskCenter.allowMutation("Change storage permission", null)) {
+                    requestAllFilesAccess()
+                }
             }
             val browseDownloads = {
                 if (allFilesGranted) {
                     usingDevice = true
                     device.openDownloads()
                     page = Page.FILES
-                } else requestAllFilesAccess()
+                } else if (taskCenter.allowMutation("Change storage permission", null)) {
+                    requestAllFilesAccess()
+                }
             }
 
             MeowMeowTheme {
@@ -211,7 +243,10 @@ class MainActivity : ComponentActivity() {
                         when (page) {
                             Page.FILES -> ExplorerScreen(
                                 state = if (usingDevice) deviceState else scopedState,
-                                onChooseFolder = { folderPicker.launch(null) },
+                                onChooseFolder = {
+                                    if (taskCenter.allowMutation("Change folder access", null))
+                                        folderPicker.launch(null)
+                                },
                                 onOpenDirectory = { entry ->
                                     if (usingDevice) device.openDirectory(entry) else scoped.openDirectory(entry)
                                 },
@@ -226,13 +261,34 @@ class MainActivity : ComponentActivity() {
                                     if (usingDevice) device.setSortMode(mode) else scoped.setSortMode(mode)
                                 },
                                 onCreateFolder = { name ->
-                                    if (usingDevice) device.createFolder(name) else scoped.createFolder(name)
+                                    val target = if (usingDevice) device.copyDestination()
+                                        else scoped.copyDestination()
+                                    val locations = listOf(copyTaskScope(target))
+                                    if (taskCenter.allowMutation("Create folder", locations)) {
+                                        if (usingDevice) device.createFolder(name)
+                                        else scoped.createFolder(name)
+                                        taskCenter.noteChanged(locations)
+                                    }
                                 },
                                 onRename = { entry, name ->
-                                    if (usingDevice) device.rename(entry, name) else scoped.rename(entry, name)
+                                    val target = if (usingDevice) device.copySelection(entry)
+                                        else scoped.copySelection(entry)
+                                    val locations = listOf(copyTaskScope(target))
+                                    if (taskCenter.allowMutation("Rename item", locations)) {
+                                        if (usingDevice) device.rename(entry, name)
+                                        else scoped.rename(entry, name)
+                                        taskCenter.noteChanged(locations)
+                                    }
                                 },
                                 onDelete = { entry ->
-                                    if (usingDevice) device.delete(entry) else scoped.delete(entry)
+                                    val target = if (usingDevice) device.copySelection(entry)
+                                        else scoped.copySelection(entry)
+                                    val locations = listOf(copyTaskScope(target))
+                                    if (taskCenter.allowMutation("Delete item", locations)) {
+                                        if (usingDevice) device.delete(entry)
+                                        else scoped.delete(entry)
+                                        taskCenter.noteChanged(locations)
+                                    }
                                 },
                                 onCopy = { entry ->
                                     copy.select(
@@ -246,9 +302,13 @@ class MainActivity : ComponentActivity() {
                                     val destinationModeIsDevice = usingDevice
                                     val destination = if (destinationModeIsDevice)
                                         device.copyDestination() else scoped.copyDestination()
-                                    copy.paste(destination) {
-                                        if (destinationModeIsDevice) device.refresh()
-                                        else scoped.refresh()
+                                    val locations = listOf(copyTaskScope(destination))
+                                    if (taskCenter.allowMutation("Copy files", locations)) {
+                                        copy.paste(destination) {
+                                            taskCenter.noteChanged(locations)
+                                            if (destinationModeIsDevice) device.refresh()
+                                            else scoped.refresh()
+                                        }
                                     }
                                 },
                                 onCopyCancel = copy::cancelOrClear,
@@ -285,9 +345,13 @@ class MainActivity : ComponentActivity() {
                                     bulk.reviewDestination(destination, label)
                                 },
                                 onBulkConfirm = {
-                                    bulk.confirm {
-                                        if (allFilesGranted) device.refresh()
-                                        scoped.refresh()
+                                    val locations = bulk.mutationPlaces().map(::copyTaskScope)
+                                    if (taskCenter.allowMutation("Bulk file operation", locations)) {
+                                        bulk.confirm {
+                                            taskCenter.noteChanged(locations)
+                                            if (allFilesGranted) device.refresh()
+                                            scoped.refresh()
+                                        }
                                     }
                                 },
                                 onBulkBack = bulk::backToDestination,
@@ -298,6 +362,10 @@ class MainActivity : ComponentActivity() {
                                     if (usingDevice) device.clearError() else scoped.clearError()
                                 },
                                 searchState = if (usingDevice) deviceSearch else scopedSearch,
+                                searchOutdated = taskState.latestOutdated(
+                                    if (usingDevice) BackgroundTaskKind.DEVICE_SEARCH
+                                    else BackgroundTaskKind.FOLDER_SEARCH
+                                ),
                                 onSearch = { query, kind, scope ->
                                     if (usingDevice) device.startSearch(query, kind, scope)
                                     else scoped.startSearch(query, kind, scope)
@@ -314,17 +382,26 @@ class MainActivity : ComponentActivity() {
                                 supportsFullAccess = supported,
                                 hasFullAccess = allFilesGranted,
                                 usingDevice = usingDevice,
-                                onRequestFullAccess = ::requestAllFilesAccess,
+                                onRequestFullAccess = {
+                                    if (taskCenter.allowMutation("Change storage permission", null))
+                                        requestAllFilesAccess()
+                                },
                                 onOpenDeviceStorage = browseDevice,
                                 onBrowseDownloads = browseDownloads
                             )
                             Page.STORAGE -> StorageOverviewScreen(
                                 hasFullAccess = allFilesGranted,
                                 supportsFullAccess = supported,
-                                onGrantAccess = ::requestAllFilesAccess,
+                                onGrantAccess = {
+                                    if (taskCenter.allowMutation("Change storage permission", null))
+                                        requestAllFilesAccess()
+                                },
                                 onBrowseDownloads = browseDownloads,
                                 onOpenCleanup = { page = Page.CLEANUP },
-                                onOpenSystemStorage = ::openSystemStorage
+                                onOpenSystemStorage = {
+                                    if (taskCenter.allowMutation("Change storage settings", null))
+                                        openSystemStorage()
+                                }
                             )
                             Page.SETTINGS -> SettingsScreen(
                                 loggingEnabled = errorLoggingEnabled,
@@ -343,11 +420,8 @@ class MainActivity : ComponentActivity() {
                                 state = analysisState,
                                 usingDevice = usingDevice,
                                 sourcePath = if (usingDevice) deviceState.path else scopedState.path,
-                                onBack = {
-                                    analysis.reset()
-                                    page = Page.CLEANUP
-                                },
-                                onLeave = analysis::reset,
+                                onBack = { page = Page.CLEANUP },
+                                onLeave = analysis::cancelDeleteConfirmation,
                                 onStart = { kind, scope, minimumMiB ->
                                     val folder = if (usingDevice) device.analysisFolder(scope)
                                         else scoped.analysisFolder(scope)
@@ -355,11 +429,23 @@ class MainActivity : ComponentActivity() {
                                 },
                                 onCancel = analysis::cancel,
                                 onOpenFile = ::openFile,
+                                outdatedResults = taskState.latestOutdated(
+                                    BackgroundTaskKind.DUPLICATE_SCAN,
+                                    BackgroundTaskKind.LARGE_FILE_SCAN
+                                ),
                                 onToggleDuplicate = analysis::toggleDuplicate,
                                 onSelectGroup = analysis::selectDuplicateGroup,
                                 onRequestDelete = analysis::requestDelete,
                                 onRequestSingleDelete = analysis::requestSingleDelete,
-                                onConfirmDelete = analysis::confirmDelete,
+                                onConfirmDelete = {
+                                    val locations = analysis.pendingDeleteScopes()
+                                    if (taskCenter.allowMutation("Delete duplicate files", locations)) {
+                                        analysis.confirmDelete()
+                                        taskCenter.noteChanged(locations)
+                                    } else {
+                                        analysis.cancelDeleteConfirmation()
+                                    }
+                                },
                                 onDismissDelete = analysis::cancelDeleteConfirmation,
                                 onCancelDeletion = analysis::cancelDeletion
                             )
@@ -371,10 +457,48 @@ class MainActivity : ComponentActivity() {
                                 onGrantAccess = ::requestAllFilesAccess,
                                 onScan = cleanup::scan,
                                 onToggle = cleanup::toggleSelected,
-                                onDelete = cleanup::deleteSelected,
+                                onDelete = {
+                                    val locations = listOf(
+                                        deviceTaskScope(Environment.getExternalStoragePublicDirectory(
+                                            Environment.DIRECTORY_DOWNLOADS
+                                        ))
+                                    )
+                                    if (taskCenter.allowMutation("Delete Downloads files", locations)) {
+                                        cleanup.deleteSelected()
+                                        taskCenter.noteChanged(locations)
+                                    }
+                                },
                                 onDismissMessage = cleanup::clearMessage
                             )
                         }
+                        TaskCenterOverlay(
+                            state = taskState,
+                            onOpen = { kind ->
+                                page = when (kind) {
+                                    BackgroundTaskKind.DEVICE_SEARCH -> {
+                                        usingDevice = true
+                                        Page.FILES
+                                    }
+                                    BackgroundTaskKind.FOLDER_SEARCH -> {
+                                        usingDevice = false
+                                        Page.FILES
+                                    }
+                                    BackgroundTaskKind.DUPLICATE_SCAN,
+                                    BackgroundTaskKind.LARGE_FILE_SCAN,
+                                    BackgroundTaskKind.DUPLICATE_DELETE -> Page.ANALYSIS
+                                    BackgroundTaskKind.FILE_COPY,
+                                    BackgroundTaskKind.BULK_OPERATION -> Page.FILES
+                                    BackgroundTaskKind.DOWNLOADS_SCAN,
+                                    BackgroundTaskKind.DOWNLOADS_DELETE -> Page.CLEANUP
+                                }
+                            },
+                            onStop = taskCenter::stop,
+                            onDismiss = taskCenter::dismiss,
+                            onKeepConflict = taskCenter::keepCurrentTasks,
+                            onStopConflict = taskCenter::stopConflictingTasks,
+                            onDismissNotice = taskCenter::dismissNotice,
+                            modifier = Modifier.align(Alignment.BottomStart)
+                        )
                     }
                 }
             }

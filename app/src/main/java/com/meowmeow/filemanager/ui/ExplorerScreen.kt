@@ -119,6 +119,7 @@ fun ExplorerScreen(
     onDismissBulkNotice: () -> Unit,
     onDismissError: () -> Unit,
     searchState: FileSearchState,
+    searchOutdated: Boolean,
     onSearch: (String, FileKind, SearchScope) -> Unit,
     onCancelSearch: () -> Unit,
     onOpenSearchFolder: (FileSearchHit) -> Unit,
@@ -145,9 +146,13 @@ fun ExplorerScreen(
     // Leaving Files (for Storage, Cleanup or Settings) must also stop scans.
     DisposableEffect(Unit) {
         onDispose {
-            onCancelSearch()
+            // Searches are app-level background tasks. Navigating tabs
+            // must not cancel them or clear completed results.
             onBulkLeave()
         }
+    }
+    LaunchedEffect(searchState.isRunning, searchState.finished) {
+        if (searchState.isRunning || searchState.finished) searchVisible = true
     }
     // A selection belongs to exactly one source folder.
     LaunchedEffect(state.path, usingDevice) {
@@ -451,6 +456,10 @@ fun ExplorerScreen(
                         )
                     }
                     searchState.notice?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                    if (searchOutdated) {
+                        Text("Files changed since this search. Results may be outdated. Scan again.",
+                            color = MaterialTheme.colorScheme.error)
+                    }
                     if (searchState.finished && searchState.hits.isEmpty()) {
                         Text(
                             if (searchState.truncated || searchState.unreadableFolders > 0)

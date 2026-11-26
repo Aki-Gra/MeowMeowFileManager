@@ -23,6 +23,8 @@ import com.meowmeow.filemanager.model.sortFiles
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -39,7 +41,8 @@ data class ExplorerUiState(
 
 class ExplorerViewModel(
     private val repository: DocumentRepository,
-    private val errorLog: ErrorLogStore
+    private val errorLog: ErrorLogStore,
+    private val taskCenter: TaskCenterViewModel
 ) : ViewModel() {
     private data class FolderLevel(val name: String, val file: DocumentFile)
 
@@ -98,7 +101,6 @@ class ExplorerViewModel(
 
     fun openDirectory(entry: FileEntry) {
         val file = children[entry.id] ?: return
-        cancelSearch()
         if (!file.isDirectory) return
         folders += FolderLevel(entry.name, file)
         loadFolder()
@@ -106,13 +108,11 @@ class ExplorerViewModel(
 
     fun navigateUp() {
         if (folders.size <= 1) return
-        cancelSearch()
         folders.removeAt(folders.lastIndex)
         loadFolder()
     }
 
     fun refresh() {
-        cancelSearch()
         loadFolder()
     }
 
@@ -187,7 +187,9 @@ class ExplorerViewModel(
     fun startSearch(query: String, kind: FileKind, scope: SearchScope) {
         cancelSearch()
         val startFolder = searchStartFolder(folders.firstOrNull(), folders.lastOrNull(), scope)?.file ?: return
-        searchJob = viewModelScope.launch {
+        if (!taskCenter.allowScan("Search selected folder", scopedTaskScope(startFolder))) return
+        var taskToken = -1L
+        val searchTask = viewModelScope.launch(start = CoroutineStart.LAZY) {
             _search.value = FileSearchState(isRunning = true)
             val outcome = resultUnlessCancelled {
                 withContext(Dispatchers.IO) {
@@ -199,6 +201,7 @@ class ExplorerViewModel(
                             _search.value = _search.value.copy(
                                 foldersVisited = visited, entriesVisited = examined
                             )
+                            taskCenter.progress(taskToken, visited, examined)
                         }
                     })
                 }
@@ -223,6 +226,23 @@ class ExplorerViewModel(
                 )
             }
         }
+        searchJob = searchTask
+        val token = taskCenter.begin(
+            BackgroundTaskKind.FOLDER_SEARCH, scopedTaskScope(startFolder), cancel = { searchTask.cancel() }
+        )
+        taskToken = token
+        searchTask.invokeOnCompletion { cause ->
+            if (cause is CancellationException && searchJob === searchTask) {
+                _search.value = FileSearchState(notice = "Search stopped.")
+            }
+            taskCenter.complete(
+                token,
+                success = cause == null && _search.value.finished &&
+                    _search.value.notice == null,
+                wasCancelled = cause is CancellationException || searchTask.isCancelled
+            )
+        }
+        searchTask.start()
     }
 
     fun cancelSearch() {
@@ -291,14 +311,14 @@ class ExplorerViewModel(
         else -> t.message ?: "The file operation failed. Try again."
     }
 
-    class Factory(context: Context) : ViewModelProvider.Factory {
+    class Factory(context: Context, private val taskCenter: TaskCenterViewModel) : ViewModelProvider.Factory {
         private val repository = DocumentRepository(context.applicationContext)
         private val errorLog = (context.applicationContext as MeowMeowApp).errorLog
 
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
             require(modelClass.isAssignableFrom(ExplorerViewModel::class.java))
-            return ExplorerViewModel(repository, errorLog) as T
+            return ExplorerViewModel(repository, errorLog, taskCenter) as T
         }
     }
 }
