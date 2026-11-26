@@ -4,9 +4,33 @@ import java.util.Locale
 
 /** Supported content is always opened inside MeowMeow first. */
 enum class ReaderFormat {
-    PDF, TEXT, DOCX, DOC, ODT, UNSUPPORTED;
+    PDF, TEXT, DOCX, DOC, ODT, IMAGE, UNSUPPORTED;
 
     companion object {
+        private val imageExtensions = setOf(
+            "jpg", "jpeg", "png", "webp", "gif", "bmp", "heic", "heif", "avif"
+        )
+
+        private val imageMimes = setOf(
+            "image/jpeg", "image/jpg", "image/png", "image/webp",
+            "image/gif", "image/bmp", "image/x-ms-bmp",
+            "image/heic", "image/heif", "image/avif"
+        )
+
+        fun imageMimeType(name: String): String? = when (
+            name.substringAfterLast('.', "").lowercase(Locale.ROOT)
+        ) {
+            "jpg", "jpeg" -> "image/jpeg"
+            "png" -> "image/png"
+            "webp" -> "image/webp"
+            "gif" -> "image/gif"
+            "bmp" -> "image/bmp"
+            "heic" -> "image/heic"
+            "heif" -> "image/heif"
+            "avif" -> "image/avif"
+            else -> null
+        }
+
         private val plainTextExtensions = setOf(
             "txt", "text", "json", "jsonl", "ndjson", "xml", "csv", "tsv",
             "md", "markdown", "log", "yaml", "yml", "ini", "cfg", "conf",
@@ -21,12 +45,14 @@ enum class ReaderFormat {
                 "docx" -> DOCX
                 "doc" -> DOC
                 "odt" -> ODT
+                in imageExtensions -> IMAGE
                 in plainTextExtensions -> TEXT
                 else -> when (mime?.lowercase(Locale.ROOT)?.substringBefore(';')) {
                     "application/pdf" -> PDF
                     "application/vnd.openxmlformats-officedocument.wordprocessingml.document" -> DOCX
                     "application/msword" -> DOC
                     "application/vnd.oasis.opendocument.text" -> ODT
+                    in imageMimes -> IMAGE
                     "text/plain", "application/json", "application/xml", "text/xml",
                     "text/csv", "text/markdown", "application/x-yaml" -> TEXT
                     else -> if (mime?.startsWith("text/", ignoreCase = true) == true) TEXT else UNSUPPORTED

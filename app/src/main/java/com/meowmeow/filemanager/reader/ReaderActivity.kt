@@ -31,6 +31,9 @@ class ReaderActivity : ComponentActivity() {
             return
         }
         val format = ReaderFormat.detect(name, mime)
+        val externalMime = if (format == ReaderFormat.IMAGE &&
+            (mime.isNullOrBlank() || mime == "application/octet-stream" || mime == "*/*")
+        ) ReaderFormat.imageMimeType(name) ?: mime else mime
         val repository = ReaderRepository(applicationContext)
         setContent {
             MeowMeowTheme {
@@ -40,7 +43,7 @@ class ReaderActivity : ComponentActivity() {
                     uri = documentUri,
                     repository = repository,
                     onClose = ::finish,
-                    onExternal = { openExternally(documentUri, mime) },
+                    onExternal = { openExternally(documentUri, externalMime) },
                     onReaderFailure = { error, operation ->
                         if (error !is ReaderLimitException) {
                             logger.record(ErrorArea.DOCUMENT_READER, error, operation = operation)

@@ -148,3 +148,7 @@ available only as an explicit user action.
 The reader is integrated on a branch derived from merged v0.2 changes without
 overwriting basic-file tools. Verify it using [reader QA](docs/ADVANCED_READER_QA.md)
 and the existing v0.2 testing plan before merging PR #5.
+
+### In-app image viewing
+
+The advanced document reader also previews common images inside MeowMeow: JPEG/JPG, PNG, WebP, GIF (still first frame), BMP, plus HEIC/HEIF and AVIF where Android supports them. Images fit the screen initially, with touch pinch/pan and zoom/reset buttons. Decoding happens locally off the main thread at a bounded preview resolution, without storing or modifying originals. Older Android versions may not decode modern formats; corrupt/unsupported files show a friendly in-app failure and an explicit **Open with…** option. No external viewer is launched automatically.

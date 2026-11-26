@@ -54,3 +54,15 @@
 - [ ] On a narrow screen and in dark mode, the reader's Back, title, Open with…, page buttons and text controls fit.
 
 **Required before merge:** successful tests and debug APK build on this branch, plus physical-device sign-off. Do not merge to main until basic-features work has been checked for integration conflicts.
+
+## 7 — In-app image viewer (new)
+
+- [ ] Open disposable **JPEG/JPG, PNG, WebP, BMP and GIF** images from Files and from a search/analysis result. MeowMeow shows the image without opening a browser or another app. GIF is a *still first-frame preview*, not animated.
+- [ ] For Android versions supporting them, try **HEIC/HEIF** and **AVIF** and confirm supported images display. On versions without a decoder, confirm a safe failure message and manual **Open with…** option.
+- [ ] Fit-to-screen shows the full image without cropping, preserving transparency and correct aspect ratio. Rotate a phone: the viewer still works.
+- [ ] Use **pinch to zoom**, **Zoom +/−**, **Reset/Fit**, and pan at zoom levels above 100%. Reset brings the image back to fit-to-screen.
+- [ ] View a portrait phone photo with EXIF rotation; it should appear correctly oriented. Check a very large image; preview is downsampled rather than decoding full-resolution pixels into memory.
+- [ ] Open a corrupted image: an in-app explanation and Retry/Open with actions appear. Nothing external launches automatically.
+- [ ] Choose **Open with…** for an image, select the phone's image app, and verify temporary read access is granted. Dismiss the chooser without changing the file.
+- [ ] Open images from both full-storage access and Android's SAF folder picker. Confirm the original file is unchanged and no filenames/paths appear in error logs.
+- [ ] Recheck PDF, TXT, JSON, DOCX, legacy DOC and ODT readers to ensure their default behaviour is unchanged.
