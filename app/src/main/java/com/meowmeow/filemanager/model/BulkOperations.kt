@@ -62,12 +62,19 @@ class SafeBulkOperations<T>(private val ops: BulkOperations<T>) {
         val seen = hashSetOf<String>()
         for (selection in selected) {
             currentCoroutineContext().ensureActive()
-            val id = ops.identity(selection.item)
-            if (!seen.add(id)) continue // never operate on the same selected item twice
             var copiedBytes = 0L
             var copiedFiles = 0
             val result = try {
-                validateSelection(selection.item)
+                // Identity can fail if a file disappears or a SAF grant is
+                // revoked. Resolve it within the per-item error boundary.
+                val id = ops.identity(selection.item)
+                if (!seen.add(id)) {
+                    BulkItemResult(
+                        selection.displayName, BulkStatus.SKIPPED,
+                        "Already selected; not processed twice."
+                    )
+                } else {
+                    validateSelection(selection.item)
                 when (action) {
                     BulkAction.COPY -> {
                         val folder = requireNotNull(destination)
@@ -116,6 +123,7 @@ class SafeBulkOperations<T>(private val ops: BulkOperations<T>) {
                         deleteTree(before, hashFiles = false)
                         BulkItemResult(selection.displayName, BulkStatus.SUCCESS, "Deleted permanently")
                     }
+                }
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled

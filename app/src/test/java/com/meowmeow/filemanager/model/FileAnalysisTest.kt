@@ -18,12 +18,14 @@ class FileAnalysisTest {
     ) {
         val children = arrayListOf<Node>()
         var inaccessible = false
+        var reportedSize: Long? = null
+        var bytesRead: Long = 0L
     }
     private val ops = object : CopyOperations<Node> {
         override fun name(item: Node) = item.id
         override fun isDirectory(item: Node) = item.folder
         override fun mime(item: Node) = "application/octet-stream"
-        override fun size(item: Node) = item.data.size.toLong()
+        override fun size(item: Node) = item.reportedSize ?: item.data.size.toLong()
         override fun modified(item: Node) = 0L
         override fun identity(item: Node) = item.id
         override fun children(folder: Node): List<Node> {
@@ -35,7 +37,18 @@ class FileAnalysisTest {
         override fun createFile(parent: Node, name: String, mime: String?): Node = error("Read-only test")
         override fun read(file: Node): InputStream {
             if (file.inaccessible) throw SecurityException()
-            return ByteArrayInputStream(file.data)
+            return object : ByteArrayInputStream(file.data) {
+                override fun read(b: ByteArray, off: Int, len: Int): Int {
+                    val n = super.read(b, off, len)
+                    if (n > 0) file.bytesRead += n
+                    return n
+                }
+                override fun read(): Int {
+                    val n = super.read()
+                    if (n >= 0) file.bytesRead++
+                    return n
+                }
+            }
         }
         override fun write(file: Node): OutputStream = error("Read-only test")
         override fun removeCreated(item: Node): Boolean = error("Read-only test")
@@ -113,6 +126,33 @@ class FileAnalysisTest {
         )
         assertTrue(outcome.truncated)
         assertTrue(outcome.duplicateGroups.isEmpty())
+    }
+
+    @Test fun providerLengthUnderreportNeverHashesRestOfUnboundedStream() = runBlocking {
+        val root = Node("root", folder = true)
+        val a = text("a", "identical-prefix-A").apply { reportedSize = 4 }
+        val b = text("b", "identical-prefix-B").apply { reportedSize = 4 }
+        root.children.addAll(listOf(a, b))
+        val result = FileAnalysisScanner(ops).scan(
+            root, AnalysisKind.DUPLICATES, recursive = false, maxHashBytes = 20
+        )
+        assertTrue(result.duplicateGroups.isEmpty())
+        assertEquals(2, result.unreadable)
+        assertTrue(a.bytesRead <= 5L)
+        assertTrue(b.bytesRead <= 5L)
+    }
+
+    @Test fun providerLengthUnderreportRespectsTotalHashBudget() = runBlocking {
+        val root = Node("root", folder = true)
+        val a = text("a", "123456789").apply { reportedSize = 2 }
+        val b = text("b", "123456789").apply { reportedSize = 2 }
+        root.children.addAll(listOf(a, b))
+        val result = FileAnalysisScanner(ops).scan(
+            root, AnalysisKind.DUPLICATES, recursive = false, maxHashBytes = 5
+        )
+        assertTrue(result.truncated)
+        assertTrue(a.bytesRead + b.bytesRead <= 5L)
+        assertTrue(result.duplicateGroups.isEmpty())
     }
 
     @Test fun cancelStopsScanRatherThanReportingSuccess() {

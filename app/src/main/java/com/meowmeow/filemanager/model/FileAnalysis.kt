@@ -139,7 +139,10 @@ class FileAnalysisScanner<T>(private val ops: CopyOperations<T>) {
             val byHash = linkedMapOf<Fingerprint, MutableList<AnalysisItem<T>>>()
             for (candidate in sized) {
                 currentCoroutineContext().ensureActive()
-                if (size > maxHashBytes - bytesHashed) {
+                // Reserve one byte for an EOF probe, so a provider that
+                // reports a shorter length cannot silently exceed the budget
+                // or be mistaken for a verified duplicate.
+                if (size >= maxHashBytes - bytesHashed) {
                     hashStopped = true
                     break@sizeLoop
                 }
@@ -147,24 +150,45 @@ class FileAnalysisScanner<T>(private val ops: CopyOperations<T>) {
                     val hash = MessageDigest.getInstance("SHA-256")
                     val buffer = ByteArray(64 * 1024)
                     var readBytes = 0L
+                    var hasExtraData = false
                     ops.read(candidate.item.node).use { stream ->
-                        while (true) {
+                        while (readBytes < size) {
                             currentCoroutineContext().ensureActive()
-                            val n = stream.read(buffer)
+                            val allowed = minOf(
+                                buffer.size.toLong(),
+                                size - readBytes,
+                                maxHashBytes - bytesHashed - 1L
+                            )
+                            if (allowed <= 0L) {
+                                hashStopped = true
+                                break
+                            }
+                            val n = stream.read(buffer, 0, allowed.toInt())
                             if (n < 0) break
                             if (n > 0) {
                                 hash.update(buffer, 0, n)
                                 readBytes += n
+                                bytesHashed += n
+                            }
+                        }
+                        if (!hashStopped && readBytes == size) {
+                            // This single-byte probe is counted in the read
+                            // budget, and prevents false matches on truncated
+                            // provider metadata.
+                            val extraByte = stream.read()
+                            if (extraByte >= 0) {
+                                bytesHashed++
+                                hasExtraData = true
                             }
                         }
                     }
-                    bytesHashed += readBytes
-                    if (readBytes != size ||
+                    if (hashStopped) break@sizeLoop
+                    if (hasExtraData || readBytes != size ||
                         (candidate.modified > 0 &&
                             ops.modified(candidate.item.node) != candidate.modified) ||
                         ops.size(candidate.item.node) != size
                     ) {
-                        unreadable++ // changed while scanning: don't claim duplicate
+                        unreadable++ // changed/incorrect metadata: never a duplicate
                     } else {
                         val fingerprint = Fingerprint(hash.digest().toList())
                         byHash.getOrPut(fingerprint) { arrayListOf() }.add(candidate.item)

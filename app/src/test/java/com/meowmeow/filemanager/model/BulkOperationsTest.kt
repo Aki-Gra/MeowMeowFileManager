@@ -21,12 +21,16 @@ class BulkOperationsTest {
     }
     private class Ops: BulkOperations<MemNode> {
         var failDestinationRead = false
+        var denyIdentityFor: String? = null
         override fun name(item: MemNode) = item.name
         override fun isDirectory(item: MemNode) = item.folder
         override fun mime(item: MemNode): String? = "text/plain"
         override fun size(item: MemNode) = item.contents.size.toLong()
         override fun modified(item: MemNode) = 0L
-        override fun identity(item: MemNode) = System.identityHashCode(item).toString()
+        override fun identity(item: MemNode): String {
+            if (item.name == denyIdentityFor) throw java.io.IOException("Identity unavailable")
+            return System.identityHashCode(item).toString()
+        }
         override fun children(folder: MemNode) = folder.children.toList()
         override fun contains(folder: MemNode, childName: String) =
             folder.children.any { it.name == childName }
@@ -108,6 +112,36 @@ class BulkOperationsTest {
             destination.children.first { it.name == "alpha-renamed.txt" }.contents)
         assertTrue(originalFolder.children.contains(a))
         assertTrue(originalFolder.children.contains(b))
+    }
+
+    @Test fun inaccessibleIdentityOnlyFailsOneSelection() = runBlocking {
+        val blocked = f("blocked", "private")
+        val good = f("good.txt", "safe")
+        val dest = MemNode("dest", true)
+        val result = SafeBulkOperations(Ops().apply {
+            denyIdentityFor = "blocked"
+        }).execute(BulkAction.COPY, listOf(
+            BulkSelection(blocked, "blocked"), BulkSelection(good, "good.txt")
+        ), dest)
+        assertEquals(2, result.total)
+        assertEquals(2, result.processed)
+        assertEquals(1, result.failed)
+        assertEquals(1, result.success)
+        assertEquals("good.txt", dest.children.single().name)
+    }
+
+    @Test fun repeatedSameSelectedIdentityIsReportedSkipped() = runBlocking {
+        val original = f("single.txt", "one")
+        val dest = MemNode("dest", true)
+        val result = SafeBulkOperations(Ops()).execute(BulkAction.COPY, listOf(
+            BulkSelection(original, "single.txt"),
+            BulkSelection(original, "single.txt")
+        ), dest)
+        assertEquals(2, result.total)
+        assertEquals(2, result.processed)
+        assertEquals(1, result.success)
+        assertEquals(1, result.skipped)
+        assertEquals(1, dest.children.size)
     }
 
     @Test fun verifiedMoveCopiesBeforeRemovingSource() = runBlocking {
