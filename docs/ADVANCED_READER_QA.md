@@ -66,3 +66,17 @@
 - [ ] Choose **Open with…** for an image, select the phone's image app, and verify temporary read access is granted. Dismiss the chooser without changing the file.
 - [ ] Open images from both full-storage access and Android's SAF folder picker. Confirm the original file is unchanged and no filenames/paths appear in error logs.
 - [ ] Recheck PDF, TXT, JSON, DOCX, legacy DOC and ODT readers to ensure their default behaviour is unchanged.
+
+## 8 — Share from viewer and file menus
+
+- [ ] Open a PDF from Files. Tap the **Share** toolbar icon. Android's native Sharesheet appears and offers compatible destinations. No file is transmitted until a destination is selected.
+- [ ] Cancel the Sharesheet. You should return to the same MeowMeow viewer without changing or saving the file. **Open with…** must still work independently.
+- [ ] Repeat for PNG/JPEG, TXT, JSON, DOCX, DOC, GIF and an unsupported ZIP file. Verify the original complete file is received, not a picture of the preview, cropped bitmap or text copy.
+- [ ] In Files **List**, tap a regular file's **three-dot menu → Share**. The Sharesheet opens directly without first loading the reader.
+- [ ] Repeat in **Large icons** and **Thumbnails**. The three-dot menu still offers Copy, Rename and Delete according to existing permissions and confirmations.
+- [ ] Folder three-dot menus **do not** offer Share (sharing a folder archive is out of scope). Read-only files **do** offer Share.
+- [ ] Share through both Android full-access device storage and SAF-selected folders, including a scoped document whose provider reports a generic `application/octet-stream` MIME type. The target app should get correct MIME and temporary **read**, not write, permission.
+- [ ] With access revoked, a moved/deleted file or no compatible sharing app, handle errors with a friendly message and without a crash. An expected Sharesheet cancel should not be logged as an error.
+- [ ] Check diagnostics after a genuine sharing failure: only generic `MM-SHARE-FILE` code appears, no private filename, path, contents or exception message.
+- [ ] In airplane mode, opening the Sharesheet must work. MeowMeow itself must not upload files to any server; only the user's selected destination may transfer files.
+- [ ] Test a small-screen phone, long filenames and dark mode. The Share toolbar button and **Open with…** must remain accessible.

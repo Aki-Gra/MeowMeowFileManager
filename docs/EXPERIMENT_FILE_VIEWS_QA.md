@@ -64,3 +64,9 @@ into PR #5 until physical-device testing passes.
 
 **Report:** Pass/Fail, Android version, build commit, view mode, steps to
 reproduce and sanitized screenshots. Do not include private file information.
+
+## Share action regression (integrated into PR #5)
+
+- [ ] In both Large icons and Thumbnails views, open the three-dot menu on a file and tap Share; the Android Sharesheet appears with the original file.
+- [ ] Cancel, return to the same folder and confirm file-menu Copy/Rename/Delete and multi-select are unchanged.
+- [ ] A folder does not offer Share. Unsupported document files still offer Share if they are regular files.

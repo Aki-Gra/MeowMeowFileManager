@@ -170,3 +170,9 @@ results intentionally remain in the existing list to show match locations.
 This is experimental: test performance, readability, small-screen layout,
 SAF access and actions before merging it into the reader PR. See
 [docs/EXPERIMENT_FILE_VIEWS_QA.md](docs/EXPERIMENT_FILE_VIEWS_QA.md).
+
+## Share original files (v0.3)
+
+The in-app PDF/text/image viewer has an explicit **Share** action beside **Open with…**. **Files → three-dot menu → Share** also works for regular files in List, Large icons and Thumbnails layouts (including files the reader cannot preview). No folder sharing or automatic sharing is supported.
+
+Sharing launches Android's native Sharesheet with `ACTION_SEND`, `EXTRA_STREAM`, a grantable `content://` URI and temporary read-only permission. Direct shared-storage files are converted through the app's existing FileProvider; Storage Access Framework files retain their provider content URI. Supported MIME types are preserved or inferred from the extension for generic/unknown provider MIME values. **The original file is shared unchanged**, not an extracted text preview, PDF screenshot or image thumbnail. The user chooses a destination; canceling the sheet changes nothing. Share failures use sanitized `MM-SHARE-FILE` diagnostic codes without paths, filenames or exception text. No background upload or new storage/network permissions are added.

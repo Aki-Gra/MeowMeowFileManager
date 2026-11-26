@@ -36,7 +36,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.lifecycleScope
-import androidx.core.content.FileProvider
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.meowmeow.filemanager.diagnostics.ErrorArea
@@ -63,7 +62,6 @@ import com.meowmeow.filemanager.ui.ExplorerViewModel
 import com.meowmeow.filemanager.ui.StorageOverviewScreen
 import com.meowmeow.filemanager.ui.SettingsScreen
 import com.meowmeow.filemanager.ui.theme.MeowMeowTheme
-import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
