@@ -200,3 +200,27 @@ are not advertised: for those sources, Android may not show MeowMeow even
 if the file's extension could otherwise be read. Browsing an HTTP URL
 directly in MeowMeow is not part of this feature. Refer to
 [external-open QA](docs/ADVANCED_READER_QA.md#9--open-files-in-meowmeow-from-other-android-apps).
+
+
+## Swipe navigation — image gallery and PDF pages
+
+When an image is opened **from MeowMeow's Files folder or search results**,
+the reader receives a temporary, in-memory snapshot of nearby images in the
+current result order. Swipe **right-to-left for the next image**, and
+**left-to-right for the previous image**; optional Previous/Next buttons and
+the photo counter provide accessible alternatives. Non-image files and folders
+are skipped. The session is never persisted and is cleared when the reader
+closes. Very large sets are safely windowed to 5,000 items around the
+selected photo. Images opened **from other apps** have no folder context, so
+there is no adjacent-image navigation.
+
+PDF pages support the same horizontal gestures at fit-to-screen size while
+retaining existing Previous/Next buttons. When a PDF is zoomed beyond 100%,
+horizontal dragging pans the page instead. On images, pinching or panning
+while zoomed does not switch to another image. A left/right gesture must
+exceed a deliberate movement threshold and beat vertical movement to avoid
+unintended page changes.
+
+No images are uploaded, indexed, altered, or cached to disk by the gallery
+navigation feature. Sharing and external opening always use the image
+currently displayed.

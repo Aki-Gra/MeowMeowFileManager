@@ -99,3 +99,44 @@
 - [ ] Recheck normal internal file-opening in Files, Search and Analysis and confirm no regression.
 
 **Android behavior:** App matching is controlled by Android and the sender's MIME type. We register supported, specific MIME types plus `text/*` over `content://`. A provider using only `application/octet-stream` (generic binary) may not list MeowMeow; registering for every binary file would misrepresent its reading capabilities. An HTTP URL is not a grantable local document and is not handled by this feature. The build does **not** silently claim to become the default app.
+
+
+## 10 — Swipe images and PDF pages
+
+- [ ] From **Files → a folder with at least 4 pictures** interspersed with
+  PDFs/TXT/subfolders, open the middle image. Swipe **left** (right-to-left):
+  the next image in the displayed sort order opens. Swipe **right**: the
+  previous image opens. Non-image files and folders are skipped.
+- [ ] Switch among **List, Large icons, Thumbnails** and sorting options.
+  The image sequence follows the current displayed order. The picture
+  filename/title, count (e.g. 2/4), Share and Open with… update with
+  each selection. The original file is unchanged.
+- [ ] Verify **Previous/Next** buttons work and are disabled at the
+  boundaries; swiping past first/last picture does not wrap or crash.
+- [ ] Make one image unavailable, then navigate. Expect a safe reader error
+  and the ability to go to another image; no exception text or filenames
+  appear in the error log.
+- [ ] Zoom into an image with two fingers. **Pinch and one-finger pan must
+  not trigger next/previous**. Press Fit and try the horizontal swipe again.
+  Small, diagonal and mainly vertical drags must not change the picture.
+- [ ] Open an image from **Search**. Navigation follows that search's image
+  result order (including images from subfolders), without changing the
+  search results or starting a new scan.
+- [ ] Open an image from another app using Android **Open with MeowMeow**.
+  Confirm it previews successfully but cannot browse unrelated nearby
+  images; Back returns to that external app.
+- [ ] Open a PDF containing at least 4 pages. Swipe **left** to advance
+  and **right** to go back. Page count and rendered contents must match.
+  Previous/Next buttons still work. At first/last page, nothing wraps.
+- [ ] Zoom PDF to 150–200% and drag horizontally. It should pan within the
+  current page **without turning pages**. Use Previous/Next to change
+  pages while zoomed if needed.
+- [ ] Rapidly swipe pages and images, rotate the device and return. No
+  crashes, loading-overlay lockups, or incorrect Share/External target.
+- [ ] Test with only one image in the folder, a broken image, large
+  image sets, no internet, SAF-scoped and approved full storage access.
+  Check both phone orientations and dark mode.
+
+**Gesture direction:** swipe from the right side toward the left to move
+forward; swipe from left toward right to move back. This is independent of
+the Android system Back gesture at the very edge of the screen.
