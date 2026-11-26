@@ -3,7 +3,9 @@ package com.meowmeow.filemanager.reader
 import android.net.Uri
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculatePan
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -33,6 +35,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -42,6 +45,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
@@ -53,6 +57,7 @@ import com.meowmeow.filemanager.diagnostics.ErrorOperation
 import com.meowmeow.filemanager.ui.resultUnlessCancelled
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlin.math.abs
 
 private sealed interface Preview {
     data object Loading : Preview
@@ -71,6 +76,7 @@ fun ReaderScreen(
     onClose: () -> Unit,
     onShare: () -> Unit,
     onExternal: () -> Unit,
+    galleryUnavailable: Boolean = false,
     galleryPosition: Int? = null,
     galleryCount: Int? = null,
     onPreviousImage: (() -> Unit)? = null,
@@ -115,7 +121,8 @@ fun ReaderScreen(
                 ReaderFormat.PDF -> PdfReader(uri, repository, onReaderFailure, onExternal)
                 ReaderFormat.IMAGE -> ImageReader(
                     uri, title, onReaderFailure, onExternal,
-                    galleryPosition, galleryCount, onPreviousImage, onNextImage
+                    galleryPosition, galleryCount, onPreviousImage, onNextImage,
+                    galleryUnavailable
                 )
                 else -> TextReader(uri, format, repository, onReaderFailure, onExternal)
             }
@@ -216,11 +223,13 @@ private fun PdfReader(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            OutlinedButton(onClick = { pageIndex-- }, enabled = pageIndex > 0) { Text("Previous") }
+            OutlinedButton(onClick = { pageIndex = (pageIndex - 1).coerceAtLeast(0) },
+                enabled = pageIndex > 0) { Text("Previous") }
             Text("Page " + (pageIndex + 1) + " / " + (loaded?.page?.totalPages ?: "…"),
                 style = MaterialTheme.typography.labelMedium)
-            OutlinedButton(onClick = { pageIndex++ },
-                enabled = loaded != null && pageIndex + 1 < loaded.page.totalPages) { Text("Next") }
+            OutlinedButton(onClick = {
+                if (loaded != null) pageIndex = (pageIndex + 1).coerceAtMost(loaded.page.totalPages - 1)
+            }, enabled = loaded != null && pageIndex + 1 < loaded.page.totalPages) { Text("Next") }
         }
         Row(
             Modifier.fillMaxWidth(),
@@ -239,31 +248,44 @@ private fun PdfReader(
             is Preview.Failure -> ReaderMessage(state.reason, "Your original PDF is unchanged.",
                 onExternal, onRetry = { retry++ })
             is Preview.PdfData -> {
+                val bitmap = state.page.bitmap
+                DisposableEffect(bitmap) {
+                    onDispose { if (!bitmap.isRecycled) bitmap.recycle() }
+                }
                 val bitmapWidthDp = with(density) { state.page.bitmap.width.toDp() }
                 val total = state.page.totalPages
                 val swipeThreshold = with(density) { 70.dp.toPx() }
                 val navigationModifier = if (zoom <= 1f) {
                     Modifier.pointerInput(pageIndex, total) {
-                        var distance = 0f
-                        detectHorizontalDragGestures(
-                            onDragStart = { distance = 0f },
-                            onHorizontalDrag = { change, amount ->
-                                distance += amount
-                                change.consume()
-                            },
-                            onDragEnd = {
-                                // Right-to-left: next page; left-to-right: previous.
-                                pageIndex = swipeTargetIndex(
-                                    currentIndex = pageIndex,
-                                    total = total,
-                                    dragX = distance,
-                                    dragY = 0f,
-                                    minimumDistance = swipeThreshold,
-                                    zoomed = false,
-                                    multiTouch = false
-                                )
-                            }
-                        )
+                        awaitEachGesture {
+                            awaitFirstDown(requireUnconsumed = false)
+                            var dragX = 0f
+                            var dragY = 0f
+                            var multiTouch = false
+                            var horizontalSwipe = false
+                            var anyPressed: Boolean
+                            do {
+                                val event = awaitPointerEvent(PointerEventPass.Initial)
+                                if (event.changes.count { it.pressed } > 1) multiTouch = true
+                                val change = event.calculatePan()
+                                dragX += change.x
+                                dragY += change.y
+                                if (!multiTouch && !horizontalSwipe &&
+                                    abs(dragX) > viewConfiguration.touchSlop &&
+                                    abs(dragX) > abs(dragY) * 1.3f
+                                ) horizontalSwipe = true
+                                // Only take horizontal drags; let vertical scroll
+                                // and multi-touch gestures reach their handlers.
+                                if (horizontalSwipe && !multiTouch) {
+                                    event.changes.forEach { it.consume() }
+                                }
+                                anyPressed = event.changes.any { it.pressed }
+                            } while (anyPressed)
+                            pageIndex = swipeTargetIndex(
+                                pageIndex, total, dragX, dragY, swipeThreshold,
+                                zoomed = false, multiTouch = multiTouch
+                            )
+                        }
                     }
                 } else {
                     // Zoomed pages must pan rather than jump to adjacent pages.

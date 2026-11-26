@@ -88,17 +88,19 @@ class ReaderRepository(private val context: Context) {
             if (descriptor == null || descriptor.statSize < 0L) {
                 descriptor?.close()
                 descriptor = null
-                privateCopy = copyPdfToPrivateCache(uri)
+                val temporary = copyPdfToPrivateCache(uri)
+                privateCopy = temporary
                 descriptor = ParcelFileDescriptor.open(
-                    privateCopy, ParcelFileDescriptor.MODE_READ_ONLY
+                    temporary, ParcelFileDescriptor.MODE_READ_ONLY
                 )
             }
-            if (descriptor.statSize > MAX_PDF_BYTES) {
+            val fd = descriptor ?: throw IOException("PDF descriptor is unavailable.")
+            if (fd.statSize > MAX_PDF_BYTES) {
                 throw ReaderLimitException("PDF is too large to preview safely (75 MiB limit).")
             }
             // A malformed but seekable PDF fails here. Do not retry by copying.
-            val renderer = PdfRenderer(descriptor)
-            return PdfSession(uri, renderer, descriptor, privateCopy)
+            val renderer = PdfRenderer(fd)
+            return PdfSession(uri, renderer, fd, privateCopy)
         } catch (failure: Exception) {
             runCatching { descriptor?.close() }
             privateCopy?.delete()

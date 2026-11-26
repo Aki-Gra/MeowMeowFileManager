@@ -7,6 +7,9 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.widget.Toast
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.getValue
@@ -26,10 +29,20 @@ import com.meowmeow.filemanager.ui.theme.MeowMeowTheme
  */
 class ReaderActivity : ComponentActivity() {
     private val logger get() = (application as MeowMeowApp).errorLog
+    private var activeRepository: ReaderRepository? = null
 
     override fun onDestroy() {
         if (isFinishing) {
             ImageGallerySessions.remove(intent?.getStringExtra(EXTRA_GALLERY_TOKEN))
+        }
+        val repository = activeRepository
+        activeRepository = null
+        // Closing a PDF renderer can wait for the current render to finish.
+        // Keep that work off the UI thread during Activity teardown.
+        if (repository != null) {
+            CoroutineScope(Dispatchers.IO).launch {
+                runCatching { repository.close() }
+            }
         }
         super.onDestroy()
     }
@@ -47,6 +60,7 @@ class ReaderActivity : ComponentActivity() {
         val galleryToken = intent.getStringExtra(EXTRA_GALLERY_TOKEN)
         val gallery = ImageGallerySessions.get(galleryToken)
         val repository = ReaderRepository(applicationContext)
+        activeRepository = repository
         setContent {
             var currentIndex by rememberSaveable(galleryToken) {
                 mutableIntStateOf(gallery?.startIndex ?: 0)
@@ -88,6 +102,7 @@ class ReaderActivity : ComponentActivity() {
                     onClose = ::finish,
                     onShare = { shareFile(currentUri, currentName, externalMime) },
                     onExternal = { openExternally(currentUri, externalMime) },
+                    galleryUnavailable = galleryToken != null && gallery == null,
                     galleryPosition = if (gallery != null) currentIndex + 1 else null,
                     galleryCount = gallery?.images?.size,
                     onPreviousImage = if (gallery != null && currentIndex > 0)

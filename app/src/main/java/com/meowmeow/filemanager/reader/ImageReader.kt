@@ -20,6 +20,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -63,7 +64,8 @@ internal fun ImageReader(
     galleryPosition: Int? = null,
     galleryCount: Int? = null,
     onPrevious: (() -> Unit)? = null,
-    onNext: (() -> Unit)? = null
+    onNext: (() -> Unit)? = null,
+    galleryUnavailable: Boolean = false
 ) {
     val context = LocalContext.current
     val repository = remember(context) { ImageReaderRepository(context.applicationContext) }
@@ -111,6 +113,9 @@ internal fun ImageReader(
         }
         is ImagePreviewState.Ready -> {
             val bitmap = loaded.bitmap
+            DisposableEffect(bitmap) {
+                onDispose { if (!bitmap.isRecycled) bitmap.recycle() }
+            }
             var scale by rememberSaveable(uri.toString()) { mutableFloatStateOf(1f) }
             var pan by remember(uri) { mutableStateOf(Offset.Zero) }
             var viewport by remember { mutableStateOf(IntSize.Zero) }
@@ -147,6 +152,12 @@ internal fun ImageReader(
                 }
                 if (galleryPosition != null && galleryCount != null && galleryCount > 1) {
                     GalleryControls(galleryPosition, galleryCount, onPrevious, onNext)
+                } else if (galleryUnavailable) {
+                    Text(
+                        "Gallery navigation is unavailable after restart. Reopen from Files.",
+                        modifier = Modifier.padding(horizontal = 12.dp),
+                        style = MaterialTheme.typography.labelSmall
+                    )
                 }
                 Box(
                     Modifier.fillMaxSize()
