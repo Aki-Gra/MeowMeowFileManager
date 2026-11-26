@@ -42,13 +42,14 @@ fun TaskCenterOverlay(
     onDismiss: (Long) -> Unit,
     onKeepConflict: () -> Unit,
     onStopConflict: () -> Unit,
-    onDismissNotice: () -> Unit
+    onDismissNotice: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     var expanded by rememberSaveable { mutableStateOf(false) }
 
     if (state.tasks.isNotEmpty() || state.notice != null) {
         Column(
-            modifier = Modifier.padding(end = 12.dp, bottom = 12.dp).widthIn(max = 360.dp),
+            modifier = modifier.padding(end = 12.dp, bottom = 12.dp).widthIn(max = 360.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp),
             horizontalAlignment = Alignment.End
         ) {
