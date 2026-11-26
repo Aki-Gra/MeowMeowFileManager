@@ -152,3 +152,21 @@ and the existing v0.2 testing plan before merging PR #5.
 ### In-app image viewing
 
 The advanced document reader also previews common images inside MeowMeow: JPEG/JPG, PNG, WebP, GIF (still first frame), BMP, plus HEIC/HEIF and AVIF where Android supports them. Images fit the screen initially, with touch pinch/pan and zoom/reset buttons. Decoding happens locally off the main thread at a bounded preview resolution, without storing or modifying originals. Older Android versions may not decode modern formats; corrupt/unsupported files show a friendly in-app failure and an explicit **Open with…** option. No external viewer is launched automatically.
+
+
+## Experimental file-view layouts (stacked preview branch)
+
+On \`experiment/explorer-icons-thumbnails\` (based on the advanced reader branch),
+the **Files** view has a **Choose file view** control near Sort, offering
+**List**, **Large icons**, and **Thumbnails**. List is the default and preserves
+existing behavior; icon and thumbnail modes use lazy adaptive grids, retaining
+folder navigation, sorting, copy/rename/delete and bulk selection. JPEG/PNG/
+WebP/GIF and other locally decodable images show capped thumbnails; other
+file types show large icons. A small 8 MiB in-memory cache is used for visible
+tiles only; no persistent thumbnail cache, network calls or file modification.
+The selected mode is stored as a single non-sensitive app preference. Search
+results intentionally remain in the existing list to show match locations.
+
+This is experimental: test performance, readability, small-screen layout,
+SAF access and actions before merging it into the reader PR. See
+[docs/EXPERIMENT_FILE_VIEWS_QA.md](docs/EXPERIMENT_FILE_VIEWS_QA.md).
