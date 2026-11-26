@@ -164,6 +164,7 @@ internal fun ImageReader(
                                 var hadMultipleFingers = false
                                 var horizontal = 0f
                                 var vertical = 0f
+                                var anyPressed: Boolean
                                 do {
                                     val event = awaitPointerEvent()
                                     val activeFingers = event.changes.count { it.pressed }
@@ -180,7 +181,8 @@ internal fun ImageReader(
                                         horizontal += panChange.x
                                         vertical += panChange.y
                                     }
-                                } while (event.changes.any { it.pressed })
+                                    anyPressed = event.changes.any { it.pressed }
+                                } while (anyPressed)
 
                                 // Horizontal, deliberate one-finger swipe at fit-to-screen.
                                 // A pinch or a zoomed image must never change the photo.
