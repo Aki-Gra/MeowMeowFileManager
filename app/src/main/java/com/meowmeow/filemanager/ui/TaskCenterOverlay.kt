@@ -118,12 +118,14 @@ fun TaskCenterOverlay(
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Icon(Icons.Default.NotificationsActive, contentDescription = null)
-                    Text(
-                        if (expanded) "Hide tasks"
-                        else if (state.runningCount > 0) "${state.runningCount} active"
-                        else "Tasks",
-                        style = MaterialTheme.typography.labelLarge
-                    )
+                    if (expanded) {
+                        Text("Hide tasks", style = MaterialTheme.typography.labelLarge)
+                    } else if (state.runningCount > 0) {
+                        Text(
+                            state.runningCount.toString(),
+                            style = MaterialTheme.typography.labelLarge
+                        )
+                    }
                 }
             }
         }
