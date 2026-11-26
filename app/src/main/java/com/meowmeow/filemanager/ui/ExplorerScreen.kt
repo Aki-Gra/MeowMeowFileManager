@@ -795,30 +795,15 @@ private fun FileRow(
                     IconButton(onClick = { menuExpanded = true }) {
                         Icon(Icons.Default.MoreVert, contentDescription = "Actions for ${entry.name}")
                     }
-                    DropdownMenu(
+                    FileActionsMenu(
+                        entry = entry,
                         expanded = menuExpanded,
-                        onDismissRequest = { menuExpanded = false }
-                    ) {
-                        DropdownMenuItem(
-                            text = { Text("Copy") },
-                            leadingIcon = { Icon(Icons.Default.ContentCopy, contentDescription = null) },
-                            onClick = { menuExpanded = false; onCopy() }
-                        )
-                        if (!entry.isDirectory) DropdownMenuItem(
-                            text = { Text("Share") },
-                            leadingIcon = { Icon(Icons.Default.Share, contentDescription = null) },
-                            onClick = { menuExpanded = false; onShare() }
-                        )
-                        if (entry.canWrite) DropdownMenuItem(
-                            text = { Text("Rename") },
-                            leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null) },
-                            onClick = { menuExpanded = false; onRename() }
-                        )
-                        if (entry.canWrite) DropdownMenuItem(
-                            text = { Text("Delete") },
-                            leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null) },
-                            onClick = { menuExpanded = false; onDelete() }
-                        )
+                        onDismiss = { menuExpanded = false },
+                        onCopy = onCopy,
+                        onShare = onShare,
+                        onRename = onRename,
+                        onDelete = onDelete
+                    )
                     }
                 }
             }

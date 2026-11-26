@@ -116,35 +116,15 @@ internal fun ExplorerFileTile(
                     IconButton(onClick = { menu = true }, modifier = Modifier.size(36.dp)) {
                         Icon(Icons.Default.MoreVert, contentDescription = "Actions for " + entry.name)
                     }
-                    DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                        DropdownMenuItem(
-                            text = { Text("Copy") },
-                            leadingIcon = {
-                                Icon(Icons.Default.ContentCopy, contentDescription = null)
-                            },
-                            onClick = { menu = false; onCopy() }
-                        )
-                        if (!entry.isDirectory) {
-                            DropdownMenuItem(
-                                text = { Text("Share") },
-                                leadingIcon = {
-                                    Icon(Icons.Default.Share, contentDescription = null)
-                                },
-                                onClick = { menu = false; onShare() }
-                            )
-                        }
-                        if (entry.canWrite) {
-                            DropdownMenuItem(
-                                text = { Text("Rename") },
-                                leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null) },
-                                onClick = { menu = false; onRename() }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Delete") },
-                                leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null) },
-                                onClick = { menu = false; onDelete() }
-                            )
-                        }
+                    FileActionsMenu(
+                        entry = entry,
+                        expanded = menu,
+                        onDismiss = { menu = false },
+                        onCopy = onCopy,
+                        onShare = onShare,
+                        onRename = onRename,
+                        onDelete = onDelete
+                    )
                     }
                 }
             }

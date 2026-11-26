@@ -10,6 +10,7 @@ import android.net.Uri
 import android.os.Build
 import androidx.core.content.FileProvider
 import android.util.LruCache
+import android.provider.OpenableColumns
 import com.meowmeow.filemanager.model.FileEntry
 import com.meowmeow.filemanager.reader.ReaderFormat
 import java.io.File
@@ -58,6 +59,21 @@ internal class ExplorerThumbnails(private val context: Context) {
                     File(requireNotNull(original.path))
                 )
             } else if (original.scheme == "content") original else return null
+            // Some providers give unknown size in their file listing.
+            // Check before decoding; unknown non-seekable sources use an icon.
+            if (entry.sizeBytes <= 0L) {
+                val declared = runCatching {
+                    context.contentResolver.query(
+                        uri, arrayOf(OpenableColumns.SIZE), null, null, null
+                    )?.use { cursor ->
+                        if (cursor.moveToFirst() && !cursor.isNull(0)) cursor.getLong(0) else null
+                    }
+                }.getOrNull()
+                val knownSize = declared ?: runCatching {
+                    context.contentResolver.openAssetFileDescriptor(uri, "r")?.use { it.length }
+                }.getOrNull()
+                if (knownSize == null || knownSize < 0 || knownSize > MAX_FILE_BYTES) return null
+            }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                 val source = ImageDecoder.createSource(context.contentResolver, uri)
                 ImageDecoder.decodeBitmap(source) { decoder, info, _ ->
