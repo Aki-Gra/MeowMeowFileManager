@@ -36,7 +36,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.lifecycleScope
-import androidx.core.content.FileProvider
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.meowmeow.filemanager.diagnostics.ErrorArea
@@ -44,6 +43,9 @@ import com.meowmeow.filemanager.diagnostics.ErrorOperation
 import com.meowmeow.filemanager.diagnostics.formatErrorLog
 import com.meowmeow.filemanager.diagnostics.suggestedErrorLogFileName
 import com.meowmeow.filemanager.model.FileEntry
+import com.meowmeow.filemanager.reader.ReaderActivity
+import com.meowmeow.filemanager.reader.ImageGallerySessions
+import com.meowmeow.filemanager.sharing.FileSharing
 import com.meowmeow.filemanager.ui.TaskCenterViewModel
 import com.meowmeow.filemanager.ui.TaskCenterOverlay
 import com.meowmeow.filemanager.ui.BackgroundTaskKind
@@ -61,7 +63,6 @@ import com.meowmeow.filemanager.ui.ExplorerViewModel
 import com.meowmeow.filemanager.ui.StorageOverviewScreen
 import com.meowmeow.filemanager.ui.SettingsScreen
 import com.meowmeow.filemanager.ui.theme.MeowMeowTheme
-import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -250,7 +251,8 @@ class MainActivity : ComponentActivity() {
                                 onOpenDirectory = { entry ->
                                     if (usingDevice) device.openDirectory(entry) else scoped.openDirectory(entry)
                                 },
-                                onOpenFile = ::openFile,
+                                onOpenFile = { entry, siblings -> openFile(entry, siblings) },
+                                onShare = ::shareFile,
                                 onNavigateUp = {
                                     if (usingDevice) device.navigateUp() else scoped.navigateUp()
                                 },
@@ -410,7 +412,15 @@ class MainActivity : ComponentActivity() {
                                     analysis.scan(folder, kind, scope, minimumMiB, origin)
                                 },
                                 onCancel = analysis::cancel,
-                                onOpenFile = ::openFile,
+                                onOpenFile = { entry ->
+                                    val siblings = if (analysisState.kind ==
+                                        com.meowmeow.filemanager.model.AnalysisKind.LARGE
+                                    ) analysisState.large.map { it.entry }
+                                    else analysisState.duplicateGroups.flatMap { group ->
+                                        group.members.map { it.entry }
+                                    }
+                                    openFile(entry, siblings)
+                                },
                                 outdatedResults = taskState.latestOutdated(
                                     BackgroundTaskKind.DUPLICATE_SCAN,
                                     BackgroundTaskKind.LARGE_FILE_SCAN
@@ -513,27 +523,43 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun openFile(entry: FileEntry) {
+    /** Launch the native sharesheet only when a user explicitly chooses Share. */
+    private fun shareFile(entry: FileEntry) {
+        if (entry.isDirectory) return
         try {
-            val original = Uri.parse(entry.id)
-            val shareUri = if (original.scheme == "file") {
-                FileProvider.getUriForFile(
-                    this,
-                    packageName + ".fileprovider",
-                    File(requireNotNull(original.path))
-                )
-            } else original
-            val intent = Intent(Intent.ACTION_VIEW).apply {
-                setDataAndType(shareUri, entry.mimeType ?: "*/*")
+            FileSharing.shareEntry(this, entry)
+        } catch (_: ActivityNotFoundException) {
+            Toast.makeText(this, "No sharing app is available", Toast.LENGTH_LONG).show()
+        } catch (failure: Exception) {
+            (application as MeowMeowApp).errorLog.record(
+                ErrorArea.FILE_SHARING, failure, operation = ErrorOperation.FILE_SHARE
+            )
+            Toast.makeText(this, "Unable to share this file", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    /**
+     * Document taps open inside MeowMeow first. Android's chooser is available
+     * from the reader only after the user explicitly chooses "Open with…".
+     * This same callback handles files from browsing, search and analysis.
+     */
+    private fun openFile(entry: FileEntry, siblings: List<FileEntry> = emptyList()) {
+        val galleryToken = ImageGallerySessions.create(entry, siblings)
+        try {
+            val readerUri = FileSharing.uriForEntry(this, entry)
+            val readerIntent = Intent(this, ReaderActivity::class.java).apply {
+                setDataAndType(readerUri, entry.mimeType ?: "application/octet-stream")
+                putExtra(ReaderActivity.EXTRA_NAME, entry.name)
+                if (galleryToken != null) putExtra(ReaderActivity.EXTRA_GALLERY_TOKEN, galleryToken)
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
-            startActivity(Intent.createChooser(intent, "Open with"))
-        } catch (failure: ActivityNotFoundException) {
-            (application as MeowMeowApp).errorLog.record(ErrorArea.EXTERNAL_FILE_OPEN, failure, operation = ErrorOperation.EXTERNAL_OPEN)
-            Toast.makeText(this, "No app can open this file type", Toast.LENGTH_LONG).show()
+            startActivity(readerIntent)
         } catch (failure: Exception) {
-            (application as MeowMeowApp).errorLog.record(ErrorArea.EXTERNAL_FILE_OPEN, failure, operation = ErrorOperation.EXTERNAL_OPEN)
-            Toast.makeText(this, "Unable to open this file", Toast.LENGTH_LONG).show()
+            ImageGallerySessions.remove(galleryToken)
+            (application as MeowMeowApp).errorLog.record(
+                ErrorArea.DOCUMENT_READER, failure, operation = ErrorOperation.READER_OPEN
+            )
+            Toast.makeText(this, "Unable to preview this file", Toast.LENGTH_LONG).show()
         }
     }
 }

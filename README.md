@@ -4,7 +4,7 @@ A native Android file explorer built in Kotlin and Jetpack Compose.
 
 ## Screens
 
-- **Files:** Browse shared storage after explicit All files access approval, or use Android's folder picker as a scoped fallback. Browse Downloads directly, open files with other apps, sort, create folders, rename and delete after confirmation.
+- **Files:** Browse shared storage after explicit All files access approval, or use Android's folder picker as a scoped fallback. Browse Downloads directly, preview supported documents inside MeowMeow, sort, create folders, rename and delete after confirmation.
 - **Storage overview:** Shows used/available space for primary shared storage, a shortcut to Android's system storage settings, a Downloads shortcut and a link to Cleanup.
 - **Cleanup:** Scans Downloads for files **50 MiB or larger**, shows candidates with their sizes, and lets users select and confirm permanent deletion. Nothing is automatically deleted.
 
@@ -127,3 +127,133 @@ Each exact-duplicate row now has **Delete**, and groups have checkboxes plus **S
 ### Analysis screen scrolling on small phones (device QA pending)
 
 The Cleanup analysis page now scrolls as a **single list** from scan settings to results, rather than keeping a large non-scrolling header above a small independently scrolling results area. On completion it scrolls to the results summary. A top-bar settings shortcut returns to the scan controls, and confirmed duplicate-deletion progress stays visible at the bottom while scrolling.
+
+
+## Advanced document reader (v0.3 preview PR)
+
+This branch integrates the in-app reader with current v0.2 Files / Search / Analysis.
+File taps from both the device storage and SAF folder picker open a **MeowMeow-owned
+offline reading screen first**, not an external browser/reader. "Open with…" is
+available only as an explicit user action.
+
+- PDF: Android PdfRenderer displays pages with Next/Previous and zoom.
+- TXT, JSON, CSV, XML, Markdown, YAML, log files and similar text: scrollable,
+  selectable, read-only contents with font controls and BOM detection.
+- DOCX, ODT: local, bounded extraction of readable text. No pixel-perfect layout.
+- Legacy DOC: read-only text extraction via Apache POI HWPF; requires device QA.
+- Unsupported files: safe in-app explanation with optional external opening.
+- No network activity, auto-opening external apps or edits to source documents.
+- Bounded processing and private temporary caching limit parser and memory usage.
+
+The reader is integrated on a branch derived from merged v0.2 changes without
+overwriting basic-file tools. Verify it using [reader QA](docs/ADVANCED_READER_QA.md)
+and the existing v0.2 testing plan before merging PR #5.
+
+### In-app image viewing
+
+The advanced document reader also previews common images inside MeowMeow: JPEG/JPG, PNG, WebP, GIF (still first frame), BMP, plus HEIC/HEIF and AVIF where Android supports them. Images fit the screen initially, with touch pinch/pan and zoom/reset buttons. Decoding happens locally off the main thread at a bounded preview resolution, without storing or modifying originals. Older Android versions may not decode modern formats; corrupt/unsupported files show a friendly in-app failure and an explicit **Open with…** option. No external viewer is launched automatically.
+
+
+## Experimental file-view layouts (stacked preview branch)
+
+On \`experiment/explorer-icons-thumbnails\` (based on the advanced reader branch),
+the **Files** view has a **Choose file view** control near Sort, offering
+**List**, **Large icons**, and **Thumbnails**. List is the default and preserves
+existing behavior; icon and thumbnail modes use lazy adaptive grids, retaining
+folder navigation, sorting, copy/rename/delete and bulk selection. JPEG/PNG/
+WebP/GIF and other locally decodable images show capped thumbnails; other
+file types show large icons. A small 8 MiB in-memory cache is used for visible
+tiles only; no persistent thumbnail cache, network calls or file modification.
+The selected mode is stored as a single non-sensitive app preference. Search
+results intentionally remain in the existing list to show match locations.
+
+This is experimental: test performance, readability, small-screen layout,
+SAF access and actions before merging it into the reader PR. See
+[docs/EXPERIMENT_FILE_VIEWS_QA.md](docs/EXPERIMENT_FILE_VIEWS_QA.md).
+
+## Share original files (v0.3)
+
+The in-app PDF/text/image viewer has an explicit **Share** action beside **Open with…**. **Files → three-dot menu → Share** also works for regular files in List, Large icons and Thumbnails layouts (including files the reader cannot preview). No folder sharing or automatic sharing is supported.
+
+Sharing launches Android's native Sharesheet with `ACTION_SEND`, `EXTRA_STREAM`, a grantable `content://` URI and temporary read-only permission. Direct shared-storage files are converted through the app's existing FileProvider; Storage Access Framework files retain their provider content URI. Supported MIME types are preserved or inferred from the extension for generic/unknown provider MIME values. **The original file is shared unchanged**, not an extracted text preview, PDF screenshot or image thumbnail. The user chooses a destination; canceling the sheet changes nothing. Share failures use sanitized `MM-SHARE-FILE` diagnostic codes without paths, filenames or exception text. No background upload or new storage/network permissions are added.
+
+
+## Open with MeowMeow from other Android apps
+
+MeowMeow can be offered in Android's **Open with** chooser for `content://` document URIs with MIME types it knows how to preview:
+PDF, DOC/DOCX, ODT; supported JPEG/PNG/WebP/GIF/BMP/HEIC/HEIF/AVIF images;
+all `text/*` text, source/code and Markdown files; JSON, XML, CSV,
+YAML, TOML, JavaScript and similar text formats. Android's chooser, not
+MeowMeow, controls the displayed choices and defaults.
+
+An exported routing activity validates the incoming file and forwards a
+temporary read grant to the **non-exported** ReaderActivity. The router
+finishes immediately; Back from the reader returns to the origin rather
+than launching MeowMeow's main file list. The app does not ask for All files
+access just to read an external `content://` file. Share and Open with
+stay available inside the reader, and the Open with chooser excludes
+MeowMeow itself to prevent an open loop.
+
+**Limits:** Only provider-backed `content://` URIs are registered for security.
+Unsupported formats and generic `application/octet-stream` MIME types
+are not advertised: for those sources, Android may not show MeowMeow even
+if the file's extension could otherwise be read. Browsing an HTTP URL
+directly in MeowMeow is not part of this feature. Refer to
+[external-open QA](docs/ADVANCED_READER_QA.md#9--open-files-in-meowmeow-from-other-android-apps).
+
+
+## Swipe navigation — image gallery and PDF pages
+
+When an image is opened **from MeowMeow's Files folder or search results**,
+the reader receives a temporary, in-memory snapshot of nearby images in the
+current result order. Swipe **right-to-left for the next image**, and
+**left-to-right for the previous image**; optional Previous/Next buttons and
+the photo counter provide accessible alternatives. Non-image files and folders
+are skipped. The session is never persisted and is cleared when the reader
+closes. Very large sets are safely windowed to 5,000 items around the
+selected photo. Images opened **from other apps** have no folder context, so
+there is no adjacent-image navigation.
+
+PDF pages support the same horizontal gestures at fit-to-screen size while
+retaining existing Previous/Next buttons. When a PDF is zoomed beyond 100%,
+horizontal dragging pans the page instead. On images, pinching or panning
+while zoomed does not switch to another image. A left/right gesture must
+exceed a deliberate movement threshold and beat vertical movement to avoid
+unintended page changes.
+
+No images are uploaded, indexed, altered, or cached to disk by the gallery
+navigation feature. Sharing and external opening always use the image
+currently displayed.
+
+
+## PR #5 hardening after deep review
+
+The reader now limits **inflation of every Office ZIP part**, including
+parts skipped before the document XML, so highly compressed archives
+cannot bypass the overall budget. Known, specific provider MIME types
+take precedence over misleading extensions. External provider metadata
+is queried on a background I/O dispatcher.
+
+The PDF reader reuses one synchronized native renderer while switching
+pages and keeps at most its current rendered preview in the UI, with
+explicit bitmap and private temporary-copy cleanup. Only non-seekable
+PDF descriptors use the bounded private copy fallback, not every invalid
+document. Image sources with unknown sizes use a bounded temporary
+copy, removed immediately after preview decoding; thumbnail grids show
+icons for unbounded unknown-size images instead of trying large reads.
+
+All file-list display modes use one shared actions menu. Gallery context
+is also passed from analysis results. If Android kills the app while
+a gallery reader is open, the photo still has a standalone preview but
+its ephemeral image list is not restored; the UI explains how to reopen
+the gallery. This deliberately avoids persisting private file lists.
+
+The build runs JVM unit tests and compiles an Android instrumentation
+APK; execute \`./gradlew :app:connectedDebugAndroidTest\` on a device
+to exercise DOCX/ODT parsing, PDF renderer reuse and actual Android
+image decoding. See [device QA section 11](docs/ADVANCED_READER_QA.md#11--securityperformance-regression-after-deep-code-review).
+
+**Signing is unresolved until a persistent testing key is selected and
+stored securely.** GitHub-hosted debug builds may use different keys,
+preventing installation as an update over the previous test APK.
+Never commit a private signing keystore or passwords to the repository.

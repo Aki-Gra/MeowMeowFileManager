@@ -1,0 +1,189 @@
+# Advanced MeowMeow in-app reader — device QA
+
+## Preparation
+
+- Install the debug APK produced by the latest successful workflow for this PR's head commit.
+- Use **disposable, non-sensitive** test files in a selected SAF folder and in Downloads with All files access.
+- Prepare a 3-page PDF, TXT, JSON, DOCX, legacy DOC (Word 97–2003), ODT, Markdown, CSV and an unsupported ZIP file. Prepare an encrypted PDF and a deliberately corrupted PDF if available.
+- Keep another PDF reader installed for testing the explicit external-app action.
+- Record Android version, device class, build commit, and Pass/Fail per section.
+
+## 1 — Default behaviour
+
+- [ ] Tap a PDF, TXT, JSON, DOCX, legacy DOC, ODT, Markdown or CSV in Files. **MeowMeow's reader opens inside the app** immediately.
+- [ ] No browser, system file chooser, Google Drive or external reader launches automatically.
+- [ ] Back/Close returns to the same file list without changing file contents or navigation.
+- [ ] Reader is available in both full-access shared storage and SAF-selected folders without granting additional permissions.
+
+## 2 — PDF reader
+
+- [ ] PDF page 1 renders (not a blank screen). Use Next/Previous to navigate all pages and check page numbers.
+- [ ] Zoom +/− updates the page without a crash. Pan/scroll a zoomed page; the original stays unchanged.
+- [ ] Repeat with landscape and a longer PDF; loading indicators and navigation behave reasonably.
+- [ ] Encrypted/invalid PDF shows a helpful in-app failure, not an automatic external handoff.
+- [ ] Confirm no huge bitmap/OOM crash when switching pages rapidly.
+
+## 3 — Text and structured files
+
+- [ ] TXT, JSON, XML, CSV, Markdown and LOG open read-only with original text, line breaks, accents/Unicode and indentation visible.
+- [ ] Adjust A− / A+; text remains scrollable and selectable/copyable.
+- [ ] Check UTF-8 BOM and UTF-16 BOM text files when available.
+- [ ] Large text files are limited/truncated with a visible note or declined safely (never freeze or modify source).
+
+## 4 — Office formats (text preview, not pixel-perfect layout)
+
+- [ ] DOCX opens with paragraph text and line breaks; tables/text are readable in basic form.
+- [ ] **Legacy .DOC** opens with readable extracted text (check on the physical device; runtime compatibility of POI matters).
+- [ ] ODT opens with paragraph text; no macros, external links or embedded resources execute.
+- [ ] It is acceptable that fonts, images, complex tables, shapes and original page layout are not reproduced. The UI indicates extracted text/read only.
+- [ ] Invalid Word file is handled with an in-app explanation and no crash.
+
+## 5 — External reader ONLY on explicit request
+
+- [ ] Tap the top-bar **Open with…** on a PDF. Android displays an external app chooser; choose a reader and confirm it receives access to the selected file.
+- [ ] Cancel the chooser and return to MeowMeow; no file change.
+- [ ] Tap an unsupported ZIP. MeowMeow displays an in-app unsupported message; an external app is not invoked unless **Open with another app** is tapped.
+- [ ] If no compatible external app is installed, MeowMeow displays a readable message instead of crashing.
+
+## 6 — Privacy and regression
+
+- [ ] Reader works in airplane mode; nothing requires internet.
+- [ ] Check Settings → Error logging for generic reader codes if a genuine read/render error occurs. No private paths, filenames, file contents, exception messages or stack traces are captured.
+- [ ] Rapidly open/close multiple documents; no “StandaloneCoroutine was cancelled” error appears.
+- [ ] Confirm Files, Storage, Cleanup, Settings and file rename/delete behaviour still work.
+- [ ] On a narrow screen and in dark mode, the reader's Back, title, Open with…, page buttons and text controls fit.
+
+**Required before merge:** successful tests and debug APK build on this branch, plus physical-device sign-off. Do not merge to main until basic-features work has been checked for integration conflicts.
+
+## 7 — In-app image viewer (new)
+
+- [ ] Open disposable **JPEG/JPG, PNG, WebP, BMP and GIF** images from Files and from a search/analysis result. MeowMeow shows the image without opening a browser or another app. GIF is a *still first-frame preview*, not animated.
+- [ ] For Android versions supporting them, try **HEIC/HEIF** and **AVIF** and confirm supported images display. On versions without a decoder, confirm a safe failure message and manual **Open with…** option.
+- [ ] Fit-to-screen shows the full image without cropping, preserving transparency and correct aspect ratio. Rotate a phone: the viewer still works.
+- [ ] Use **pinch to zoom**, **Zoom +/−**, **Reset/Fit**, and pan at zoom levels above 100%. Reset brings the image back to fit-to-screen.
+- [ ] View a portrait phone photo with EXIF rotation; it should appear correctly oriented. Check a very large image; preview is downsampled rather than decoding full-resolution pixels into memory.
+- [ ] Open a corrupted image: an in-app explanation and Retry/Open with actions appear. Nothing external launches automatically.
+- [ ] Choose **Open with…** for an image, select the phone's image app, and verify temporary read access is granted. Dismiss the chooser without changing the file.
+- [ ] Open images from both full-storage access and Android's SAF folder picker. Confirm the original file is unchanged and no filenames/paths appear in error logs.
+- [ ] Recheck PDF, TXT, JSON, DOCX, legacy DOC and ODT readers to ensure their default behaviour is unchanged.
+
+## 8 — Share from viewer and file menus
+
+- [ ] Open a PDF from Files. Tap the **Share** toolbar icon. Android's native Sharesheet appears and offers compatible destinations. No file is transmitted until a destination is selected.
+- [ ] Cancel the Sharesheet. You should return to the same MeowMeow viewer without changing or saving the file. **Open with…** must still work independently.
+- [ ] Repeat for PNG/JPEG, TXT, JSON, DOCX, DOC, GIF and an unsupported ZIP file. Verify the original complete file is received, not a picture of the preview, cropped bitmap or text copy.
+- [ ] In Files **List**, tap a regular file's **three-dot menu → Share**. The Sharesheet opens directly without first loading the reader.
+- [ ] Repeat in **Large icons** and **Thumbnails**. The three-dot menu still offers Copy, Rename and Delete according to existing permissions and confirmations.
+- [ ] Folder three-dot menus **do not** offer Share (sharing a folder archive is out of scope). Read-only files **do** offer Share.
+- [ ] Share through both Android full-access device storage and SAF-selected folders, including a scoped document whose provider reports a generic `application/octet-stream` MIME type. The target app should get correct MIME and temporary **read**, not write, permission.
+- [ ] With access revoked, a moved/deleted file or no compatible sharing app, handle errors with a friendly message and without a crash. An expected Sharesheet cancel should not be logged as an error.
+- [ ] Check diagnostics after a genuine sharing failure: only generic `MM-SHARE-FILE` code appears, no private filename, path, contents or exception message.
+- [ ] In airplane mode, opening the Sharesheet must work. MeowMeow itself must not upload files to any server; only the user's selected destination may transfer files.
+- [ ] Test a small-screen phone, long filenames and dark mode. The Share toolbar button and **Open with…** must remain accessible.
+
+
+## 9 — Open files in MeowMeow from OTHER Android apps
+
+- [ ] Install the latest APK built from this PR's HEAD. Use **disposable** PDF, image, Word, ODT and text files.
+- [ ] From another file manager / Downloads, tap a **PDF** → **Open with**. Confirm MeowMeow appears as one of the compatible apps. Select it and confirm the PDF renders with page navigation and zoom.
+- [ ] Repeat with **JPG/JPEG, PNG, GIF, WebP** and, on supported devices, HEIC/HEIF/AVIF; the existing image viewer and pinch zoom remain available.
+- [ ] Repeat with **TXT, JSON, XML, CSV, Markdown, DOC, DOCX and ODT**. Correct preview type should be selected even if the shared provider's filename has no extension (when it declares a supported MIME type).
+- [ ] Repeat with text-source files such as HTML, YAML, CSS, JavaScript, Python and Kotlin where the source app declares a text MIME type.
+- [ ] **Back** from an externally opened file should return to the source app's file list or message, not open MeowMeow's Files tab or launch an extra copy of the source app.
+- [ ] In the externally opened viewer, **Share** sends the original file, not a screenshot. **Open with…** shows other apps without putting MeowMeow itself back into a self-opening loop.
+- [ ] Cancel an external Open with chooser before selecting MeowMeow. Nothing changes or auto-opens.
+- [ ] Test with MeowMeow's **All files access disabled**. An external app's grantable `content://` URI should still open in MeowMeow. The external flow must not request folder permissions or broad storage access.
+- [ ] Try a revoked/stale URI or corrupted file. Show a generic message or the reader's normal failure UI, without a crash, automatic external handoff, or exposing private paths in error logs.
+- [ ] Test an unsupported ZIP/EXE from another app: MeowMeow should NOT be a general-purpose handler advertised for binary/unknown files.
+- [ ] Test both a normal `content://` document provider and a third-party `FileProvider` where possible. Provider permissions must be temporary read-only.
+- [ ] Recheck normal internal file-opening in Files, Search and Analysis and confirm no regression.
+
+**Android behavior:** App matching is controlled by Android and the sender's MIME type. We register supported, specific MIME types plus `text/*` over `content://`. A provider using only `application/octet-stream` (generic binary) may not list MeowMeow; registering for every binary file would misrepresent its reading capabilities. An HTTP URL is not a grantable local document and is not handled by this feature. The build does **not** silently claim to become the default app.
+
+
+## 10 — Swipe images and PDF pages
+
+- [ ] From **Files → a folder with at least 4 pictures** interspersed with
+  PDFs/TXT/subfolders, open the middle image. Swipe **left** (right-to-left):
+  the next image in the displayed sort order opens. Swipe **right**: the
+  previous image opens. Non-image files and folders are skipped.
+- [ ] Switch among **List, Large icons, Thumbnails** and sorting options.
+  The image sequence follows the current displayed order. The picture
+  filename/title, count (e.g. 2/4), Share and Open with… update with
+  each selection. The original file is unchanged.
+- [ ] Verify **Previous/Next** buttons work and are disabled at the
+  boundaries; swiping past first/last picture does not wrap or crash.
+- [ ] Make one image unavailable, then navigate. Expect a safe reader error
+  and the ability to go to another image; no exception text or filenames
+  appear in the error log.
+- [ ] Zoom into an image with two fingers. **Pinch and one-finger pan must
+  not trigger next/previous**. Press Fit and try the horizontal swipe again.
+  Small, diagonal and mainly vertical drags must not change the picture.
+- [ ] Open an image from **Search**. Navigation follows that search's image
+  result order (including images from subfolders), without changing the
+  search results or starting a new scan.
+- [ ] Open an image from another app using Android **Open with MeowMeow**.
+  Confirm it previews successfully but cannot browse unrelated nearby
+  images; Back returns to that external app.
+- [ ] Open a PDF containing at least 4 pages. Swipe **left** to advance
+  and **right** to go back. Page count and rendered contents must match.
+  Previous/Next buttons still work. At first/last page, nothing wraps.
+- [ ] Zoom PDF to 150–200% and drag horizontally. It should pan within the
+  current page **without turning pages**. Use Previous/Next to change
+  pages while zoomed if needed.
+- [ ] Rapidly swipe pages and images, rotate the device and return. No
+  crashes, loading-overlay lockups, or incorrect Share/External target.
+- [ ] Test with only one image in the folder, a broken image, large
+  image sets, no internet, SAF-scoped and approved full storage access.
+  Check both phone orientations and dark mode.
+
+**Gesture direction:** swipe from the right side toward the left to move
+forward; swipe from left toward right to move back. This is independent of
+the Android system Back gesture at the very edge of the screen.
+
+
+## 11 — Security/performance regression after deep code review
+
+- [ ] Open a DOCX and ODT with ordinary text on an Android device/emulator.
+  The positive XML parser tests are in \`ReaderAndroidIntegrationTest\`
+  and must be run with \`./gradlew :app:connectedDebugAndroidTest\`.
+- [ ] Malformed Office archives and highly compressed skipped ZIP entries
+  must fail safely instead of processing unbounded decompression.
+- [ ] Open a 50–70 MiB PDF (within the 75 MiB policy) with many pages.
+  Swipe rapidly, zoom repeatedly, leave/reenter the viewer, then watch
+  memory usage. No slow, cumulative bitmap retention or render crash.
+- [ ] A non-seekable content provider uses at most one bounded private
+  temporary PDF copy per reader session; closing the reader releases
+  it. An invalid but seekable PDF is rejected without repeated copying.
+- [ ] Open an image from an unknown-sized provider. It is copied only to
+  a temporary private bounded preview file and deleted after decoding.
+  Unknown-sized images may show fallback icons in the thumbnail grid.
+- [ ] Run a large-file or duplicate scan with multiple images, tap a
+  picture, then check adjacent-image navigation and Share/External
+  target under the analysis-results ordering.
+- [ ] For a provider that declares PDF MIME but labels the file
+  \`sample.txt\`, MeowMeow should use the PDF viewer, not the text reader.
+  Generic \`application/octet-stream\` still falls back to extension.
+- [ ] Opening files from a slow SAF provider must not block the initial
+  UI thread while resolving the file name.
+- [ ] At 100% PDF zoom, a deliberate horizontal swipe changes a page;
+  vertical scrolling, diagonal movement and multi-touch must not.
+  At >100% zoom, horizontal drag pans instead.
+- [ ] Revoke a SAF permission after viewing, and rotate/recreate the
+  activity. Failure is clear and private; the reader does not silently
+  start another app or expose file paths.
+- [ ] Start a photo gallery, force-stop/relaunch while the reader is
+  in front. If the process lost the in-memory image list, it must keep
+  standalone viewing and explain how to reopen gallery navigation.
+- [ ] Compare List/Large Icons/Thumbnails three-dot menus for the same
+  readable, read-only, and writable files. Copy/Share/Rename/Delete
+  rules must match in all layouts.
+- [ ] With a new CI-generated APK, verify whether install-over-install
+  works. **Until persistent signing is configured**, different CI
+  runners may generate incompatible debug certificates and an
+  uninstall/reinstall may be required.
+
+CI now executes JVM unit tests and builds the Android instrumentation APK.
+No Android emulator is currently run in CI; device integration and gesture
+testing still require a connected device or emulator. Do not mark them
+automatically passed.
