@@ -497,7 +497,7 @@ class MainActivity : ComponentActivity() {
                             onKeepConflict = taskCenter::keepCurrentTasks,
                             onStopConflict = taskCenter::stopConflictingTasks,
                             onDismissNotice = taskCenter::dismissNotice,
-                            modifier = Modifier.align(Alignment.BottomEnd)
+                            modifier = Modifier.align(Alignment.BottomStart)
                         )
                     }
                 }

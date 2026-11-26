@@ -33,7 +33,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 
-/** Collapsed by default. An active task never depends on this panel staying open. */
+/**
+ * Collapsed by default and anchored on the left, opposite the New Folder action.
+ * An active task never depends on this panel staying open.
+ */
 @Composable
 fun TaskCenterOverlay(
     state: TaskCenterState,
@@ -49,9 +52,9 @@ fun TaskCenterOverlay(
 
     if (state.tasks.isNotEmpty() || state.notice != null) {
         Column(
-            modifier = modifier.padding(end = 12.dp, bottom = 12.dp).widthIn(max = 360.dp),
+            modifier = modifier.padding(start = 12.dp, bottom = 12.dp).widthIn(max = 360.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp),
-            horizontalAlignment = Alignment.End
+            horizontalAlignment = Alignment.Start
         ) {
             if (expanded) {
                 Card(Modifier.fillMaxWidth().heightIn(max = 360.dp)) {

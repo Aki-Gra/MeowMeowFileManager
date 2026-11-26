@@ -38,3 +38,7 @@ Tasks are **not persisted**, shared over a network or resumed after the Android 
 - One in-progress scan per search source/analysis mode ViewModel at a time; initiating a new scan in the same ViewModel replaces its previous scan.
 - SAF tree relations are intentionally conservative; some unrelated SAF operations will show a warning until provider-specific safe disjointness can be proven.
 - These are in-process jobs, **not** persistent Android background services. Some provider calls cannot be interrupted immediately, so *Stopping* is shown until they return and release file handles.
+
+## Small-screen floating notification position (26 Nov 2026)
+
+The collapsed task-notification icon and expanded panel are anchored **bottom-left**, opposite the Files screen's New Folder control. This avoids covering the primary creation action without introducing drag gestures that could interfere with scrolling and tap targets. All task and conflict-dialog behavior is unchanged. Device QA: open Files on a small portrait phone, confirm New Folder is unobstructed while the bell is visible, then expand/collapse and switch between tabs.
