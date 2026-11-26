@@ -10,6 +10,8 @@ import android.net.Uri
 import android.os.Build
 import android.provider.OpenableColumns
 import java.io.IOException
+import java.io.File
+import java.io.FileOutputStream
 import kotlin.math.max
 import kotlin.math.roundToInt
 
@@ -33,34 +35,74 @@ internal class ImageReaderRepository(private val context: Context) {
     }
 
     fun load(uri: Uri): Bitmap {
-        checkImageSize(uri)
+        val reported = knownSourceSize(uri)
+        if (reported != null && reported > MAX_SOURCE_BYTES) {
+            throw ReaderLimitException("Image is too large to preview (100 MiB limit).")
+        }
+        // An unbounded provider stream could be enormous even when its
+        // decoded dimensions are small. Make a limited, temporary private copy
+        // only when the provider cannot report a usable size.
+        var temporary: File? = null
         try {
-            return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                decodeModern(uri)
-            } else {
-                decodeLegacy(uri)
+            val source = if (reported == null) {
+                copyUnknownSource(uri).also { temporary = it }.let(Uri::fromFile)
+            } else uri
+            return try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                    decodeModern(source)
+                } else {
+                    decodeLegacy(source)
+                }
+            } catch (oom: OutOfMemoryError) {
+                throw ReaderLimitException("This image is too large to display safely.")
             }
-        } catch (oom: OutOfMemoryError) {
-            throw ReaderLimitException("This image is too large to display safely.")
+        } finally {
+            temporary?.delete()
         }
     }
 
-    private fun checkImageSize(uri: Uri) {
-        // Some SAF providers omit SIZE. The decoder is still constrained by pixel count.
-        runCatching {
+    private fun knownSourceSize(uri: Uri): Long? {
+        val reported = runCatching {
             context.contentResolver.query(uri, arrayOf(OpenableColumns.SIZE), null, null, null)
                 ?.use { c ->
                     if (c.moveToFirst() && !c.isNull(0)) c.getLong(0) else null
                 }
-        }.getOrNull()?.let { reported ->
-            if (reported > MAX_SOURCE_BYTES) {
-                throw ReaderLimitException("Image is too large to preview (100 MiB limit).")
-            }
+        }.getOrNull()
+        if (reported != null && reported >= 0) return reported
+        return runCatching {
+            context.contentResolver.openAssetFileDescriptor(uri, "r")?.use { it.length }
+        }.getOrNull()?.takeIf { it >= 0L }
+    }
+
+    private fun copyUnknownSource(uri: Uri): File {
+        val temporary = File.createTempFile("image-preview-", ".tmp", context.cacheDir)
+        try {
+            context.contentResolver.openInputStream(uri)?.use { source ->
+                FileOutputStream(temporary).use { target ->
+                    val buffer = ByteArray(16_384)
+                    var copied = 0L
+                    while (true) {
+                        val n = source.read(buffer)
+                        if (n < 0) break
+                        copied += n
+                        if (copied > MAX_SOURCE_BYTES) {
+                            throw ReaderLimitException("Image is too large to preview (100 MiB limit).")
+                        }
+                        target.write(buffer, 0, n)
+                    }
+                }
+            } ?: throw IOException("Image is not accessible.")
+            return temporary
+        } catch (failure: Exception) {
+            temporary.delete()
+            throw failure
         }
     }
 
     private fun decodeModern(uri: Uri): Bitmap {
-        val source = ImageDecoder.createSource(context.contentResolver, uri)
+        val source = if (uri.scheme == "file") {
+            ImageDecoder.createSource(File(requireNotNull(uri.path)))
+        } else ImageDecoder.createSource(context.contentResolver, uri)
         return ImageDecoder.decodeBitmap(source) { decoder, info, _ ->
             val w = info.size.width
             val h = info.size.height
