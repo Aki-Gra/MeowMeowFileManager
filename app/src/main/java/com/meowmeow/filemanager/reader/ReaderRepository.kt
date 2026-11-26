@@ -159,7 +159,11 @@ class ReaderRepository(private val context: Context) {
                 )
                 val width = (page.width * scale).roundToInt().coerceAtLeast(1)
                 val height = (page.height * scale).roundToInt().coerceAtLeast(1)
-                val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+                val bitmap = try {
+                    Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+                } catch (_: OutOfMemoryError) {
+                    throw ReaderLimitException("This PDF page is too large to render safely.")
+                }
                 try {
                     bitmap.eraseColor(Color.WHITE)
                     page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)

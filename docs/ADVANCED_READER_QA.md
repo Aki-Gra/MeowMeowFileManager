@@ -140,3 +140,50 @@
 **Gesture direction:** swipe from the right side toward the left to move
 forward; swipe from left toward right to move back. This is independent of
 the Android system Back gesture at the very edge of the screen.
+
+
+## 11 — Security/performance regression after deep code review
+
+- [ ] Open a DOCX and ODT with ordinary text on an Android device/emulator.
+  The positive XML parser tests are in \`ReaderAndroidIntegrationTest\`
+  and must be run with \`./gradlew :app:connectedDebugAndroidTest\`.
+- [ ] Malformed Office archives and highly compressed skipped ZIP entries
+  must fail safely instead of processing unbounded decompression.
+- [ ] Open a 50–70 MiB PDF (within the 75 MiB policy) with many pages.
+  Swipe rapidly, zoom repeatedly, leave/reenter the viewer, then watch
+  memory usage. No slow, cumulative bitmap retention or render crash.
+- [ ] A non-seekable content provider uses at most one bounded private
+  temporary PDF copy per reader session; closing the reader releases
+  it. An invalid but seekable PDF is rejected without repeated copying.
+- [ ] Open an image from an unknown-sized provider. It is copied only to
+  a temporary private bounded preview file and deleted after decoding.
+  Unknown-sized images may show fallback icons in the thumbnail grid.
+- [ ] Run a large-file or duplicate scan with multiple images, tap a
+  picture, then check adjacent-image navigation and Share/External
+  target under the analysis-results ordering.
+- [ ] For a provider that declares PDF MIME but labels the file
+  \`sample.txt\`, MeowMeow should use the PDF viewer, not the text reader.
+  Generic \`application/octet-stream\` still falls back to extension.
+- [ ] Opening files from a slow SAF provider must not block the initial
+  UI thread while resolving the file name.
+- [ ] At 100% PDF zoom, a deliberate horizontal swipe changes a page;
+  vertical scrolling, diagonal movement and multi-touch must not.
+  At >100% zoom, horizontal drag pans instead.
+- [ ] Revoke a SAF permission after viewing, and rotate/recreate the
+  activity. Failure is clear and private; the reader does not silently
+  start another app or expose file paths.
+- [ ] Start a photo gallery, force-stop/relaunch while the reader is
+  in front. If the process lost the in-memory image list, it must keep
+  standalone viewing and explain how to reopen gallery navigation.
+- [ ] Compare List/Large Icons/Thumbnails three-dot menus for the same
+  readable, read-only, and writable files. Copy/Share/Rename/Delete
+  rules must match in all layouts.
+- [ ] With a new CI-generated APK, verify whether install-over-install
+  works. **Until persistent signing is configured**, different CI
+  runners may generate incompatible debug certificates and an
+  uninstall/reinstall may be required.
+
+CI now executes JVM unit tests and builds the Android instrumentation APK.
+No Android emulator is currently run in CI; device integration and gesture
+testing still require a connected device or emulator. Do not mark them
+automatically passed.

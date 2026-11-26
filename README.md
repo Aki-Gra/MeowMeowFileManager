@@ -224,3 +224,36 @@ unintended page changes.
 No images are uploaded, indexed, altered, or cached to disk by the gallery
 navigation feature. Sharing and external opening always use the image
 currently displayed.
+
+
+## PR #5 hardening after deep review
+
+The reader now limits **inflation of every Office ZIP part**, including
+parts skipped before the document XML, so highly compressed archives
+cannot bypass the overall budget. Known, specific provider MIME types
+take precedence over misleading extensions. External provider metadata
+is queried on a background I/O dispatcher.
+
+The PDF reader reuses one synchronized native renderer while switching
+pages and keeps at most its current rendered preview in the UI, with
+explicit bitmap and private temporary-copy cleanup. Only non-seekable
+PDF descriptors use the bounded private copy fallback, not every invalid
+document. Image sources with unknown sizes use a bounded temporary
+copy, removed immediately after preview decoding; thumbnail grids show
+icons for unbounded unknown-size images instead of trying large reads.
+
+All file-list display modes use one shared actions menu. Gallery context
+is also passed from analysis results. If Android kills the app while
+a gallery reader is open, the photo still has a standalone preview but
+its ephemeral image list is not restored; the UI explains how to reopen
+the gallery. This deliberately avoids persisting private file lists.
+
+The build runs JVM unit tests and compiles an Android instrumentation
+APK; execute \`./gradlew :app:connectedDebugAndroidTest\` on a device
+to exercise DOCX/ODT parsing, PDF renderer reuse and actual Android
+image decoding. See [device QA section 11](docs/ADVANCED_READER_QA.md#11--securityperformance-regression-after-deep-code-review).
+
+**Signing is unresolved until a persistent testing key is selected and
+stored securely.** GitHub-hosted debug builds may use different keys,
+preventing installation as an update over the previous test APK.
+Never commit a private signing keystore or passwords to the repository.
