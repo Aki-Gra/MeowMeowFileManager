@@ -25,6 +25,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AudioFile
 import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Description
@@ -98,6 +99,7 @@ fun ExplorerScreen(
     onChooseFolder: () -> Unit,
     onOpenDirectory: (FileEntry) -> Unit,
     onOpenFile: (FileEntry) -> Unit,
+    onShare: (FileEntry) -> Unit,
     onNavigateUp: () -> Unit,
     onRefresh: () -> Unit,
     onSort: (SortMode) -> Unit,
@@ -647,6 +649,7 @@ fun ExplorerScreen(
                                     onRename = { renameTarget = entry },
                                     onDelete = { deleteTarget = entry },
                                     onCopy = { onCopy(entry) },
+                                    onShare = { onShare(entry) },
                                     selectionMode = bulkState.stage == BulkStage.SELECTING,
                                     selected = entry.id in bulkState.selectedIds,
                                     actionsEnabled = bulkState.stage == BulkStage.OFF,
@@ -674,6 +677,7 @@ fun ExplorerScreen(
                                     onRename = { renameTarget = entry },
                                     onDelete = { deleteTarget = entry },
                                     onCopy = { onCopy(entry) },
+                                    onShare = { onShare(entry) },
                                     selectionMode = bulkState.stage == BulkStage.SELECTING,
                                     selected = entry.id in bulkState.selectedIds,
                                     actionsEnabled = bulkState.stage == BulkStage.OFF,
@@ -741,6 +745,7 @@ private fun FileRow(
     onRename: () -> Unit,
     onDelete: () -> Unit,
     onCopy: () -> Unit,
+    onShare: () -> Unit,
     selectionMode: Boolean,
     selected: Boolean,
     actionsEnabled: Boolean,
@@ -798,6 +803,11 @@ private fun FileRow(
                             text = { Text("Copy") },
                             leadingIcon = { Icon(Icons.Default.ContentCopy, contentDescription = null) },
                             onClick = { menuExpanded = false; onCopy() }
+                        )
+                        if (!entry.isDirectory) DropdownMenuItem(
+                            text = { Text("Share") },
+                            leadingIcon = { Icon(Icons.Default.Share, contentDescription = null) },
+                            onClick = { menuExpanded = false; onShare() }
                         )
                         if (entry.canWrite) DropdownMenuItem(
                             text = { Text("Rename") },

@@ -19,6 +19,7 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.OpenInNew
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -66,6 +67,7 @@ fun ReaderScreen(
     uri: Uri,
     repository: ReaderRepository,
     onClose: () -> Unit,
+    onShare: () -> Unit,
     onExternal: () -> Unit,
     onReaderFailure: (Throwable, ErrorOperation) -> Unit
 ) {
@@ -86,6 +88,9 @@ fun ReaderScreen(
                     }
                 },
                 actions = {
+                    IconButton(onClick = onShare) {
+                        Icon(Icons.Default.Share, contentDescription = "Share file")
+                    }
                     TextButton(onClick = onExternal) {
                         Icon(Icons.Default.OpenInNew, contentDescription = null)
                         Text("Open with…")

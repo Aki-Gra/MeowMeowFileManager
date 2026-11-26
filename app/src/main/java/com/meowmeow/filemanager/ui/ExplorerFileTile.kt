@@ -17,6 +17,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AudioFile
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Edit
@@ -64,6 +65,7 @@ internal fun ExplorerFileTile(
     onOpen: () -> Unit,
     onSelect: () -> Unit,
     onCopy: () -> Unit,
+    onShare: () -> Unit,
     onRename: () -> Unit,
     onDelete: () -> Unit
 ) {
@@ -122,6 +124,15 @@ internal fun ExplorerFileTile(
                             },
                             onClick = { menu = false; onCopy() }
                         )
+                        if (!entry.isDirectory) {
+                            DropdownMenuItem(
+                                text = { Text("Share") },
+                                leadingIcon = {
+                                    Icon(Icons.Default.Share, contentDescription = null)
+                                },
+                                onClick = { menu = false; onShare() }
+                            )
+                        }
                         if (entry.canWrite) {
                             DropdownMenuItem(
                                 text = { Text("Rename") },

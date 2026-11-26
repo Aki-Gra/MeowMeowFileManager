@@ -9,6 +9,7 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import com.meowmeow.filemanager.MeowMeowApp
+import com.meowmeow.filemanager.sharing.FileSharing
 import com.meowmeow.filemanager.diagnostics.ErrorArea
 import com.meowmeow.filemanager.diagnostics.ErrorOperation
 import com.meowmeow.filemanager.ui.theme.MeowMeowTheme
@@ -43,6 +44,7 @@ class ReaderActivity : ComponentActivity() {
                     uri = documentUri,
                     repository = repository,
                     onClose = ::finish,
+                    onShare = { shareFile(documentUri, name, externalMime) },
                     onExternal = { openExternally(documentUri, externalMime) },
                     onReaderFailure = { error, operation ->
                         if (error !is ReaderLimitException) {
@@ -51,6 +53,17 @@ class ReaderActivity : ComponentActivity() {
                     }
                 )
             }
+        }
+    }
+
+    private fun shareFile(uri: Uri, name: String, mime: String?) {
+        try {
+            FileSharing.shareUri(this, uri, name, mime)
+        } catch (_: ActivityNotFoundException) {
+            Toast.makeText(this, "No sharing app is available", Toast.LENGTH_LONG).show()
+        } catch (failure: Exception) {
+            logger.record(ErrorArea.FILE_SHARING, failure, operation = ErrorOperation.FILE_SHARE)
+            Toast.makeText(this, "Unable to share this file", Toast.LENGTH_LONG).show()
         }
     }
 

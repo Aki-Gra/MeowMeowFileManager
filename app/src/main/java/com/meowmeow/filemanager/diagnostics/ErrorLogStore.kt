@@ -16,7 +16,7 @@ enum class ErrorArea {
     SCOPED_FOLDER_PICKER, SCOPED_BROWSING, SCOPED_FILE_OPERATION,
     DEVICE_BROWSING, DEVICE_FILE_OPERATION, CLEANUP_SCAN, CLEANUP_DELETE,
     STORAGE_OVERVIEW, EXTERNAL_FILE_OPEN, APP_CRASH, DIAGNOSTICS_TEST,
-    LOG_EXPORT, COPY_OPERATION, FILE_ANALYSIS, DOCUMENT_READER
+    LOG_EXPORT, COPY_OPERATION, FILE_ANALYSIS, DOCUMENT_READER, FILE_SHARING
 }
 /**
  * Stable, non-sensitive action identifiers. Do not reuse or rename shipped codes:
@@ -50,6 +50,7 @@ enum class ErrorOperation(val code: String, val title: String) {
     CLEANUP_DELETE("CLN-DEL", "Delete selected download"),
     STORAGE_READ("STO-READ", "Read storage information"),
     EXTERNAL_OPEN("VIEW-OPEN", "Open in another app"),
+    FILE_SHARE("SHARE-FILE", "Share a file"),
     LOG_EXPORT("LOG-EXPORT", "Export error log"),
     APP_CRASH("APP-CRASH", "Unhandled app crash"),
     READER_OPEN("READ-OPEN", "Open in-app document"),

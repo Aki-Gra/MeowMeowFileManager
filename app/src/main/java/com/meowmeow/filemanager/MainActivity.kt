@@ -45,6 +45,7 @@ import com.meowmeow.filemanager.diagnostics.formatErrorLog
 import com.meowmeow.filemanager.diagnostics.suggestedErrorLogFileName
 import com.meowmeow.filemanager.model.FileEntry
 import com.meowmeow.filemanager.reader.ReaderActivity
+import com.meowmeow.filemanager.sharing.FileSharing
 import com.meowmeow.filemanager.ui.TaskCenterViewModel
 import com.meowmeow.filemanager.ui.TaskCenterOverlay
 import com.meowmeow.filemanager.ui.BackgroundTaskKind
@@ -252,6 +253,7 @@ class MainActivity : ComponentActivity() {
                                     if (usingDevice) device.openDirectory(entry) else scoped.openDirectory(entry)
                                 },
                                 onOpenFile = ::openFile,
+                                onShare = ::shareFile,
                                 onNavigateUp = {
                                     if (usingDevice) device.navigateUp() else scoped.navigateUp()
                                 },
@@ -514,6 +516,21 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /** Launch the native sharesheet only when a user explicitly chooses Share. */
+    private fun shareFile(entry: FileEntry) {
+        if (entry.isDirectory) return
+        try {
+            FileSharing.shareEntry(this, entry)
+        } catch (_: ActivityNotFoundException) {
+            Toast.makeText(this, "No sharing app is available", Toast.LENGTH_LONG).show()
+        } catch (failure: Exception) {
+            (application as MeowMeowApp).errorLog.record(
+                ErrorArea.FILE_SHARING, failure, operation = ErrorOperation.FILE_SHARE
+            )
+            Toast.makeText(this, "Unable to share this file", Toast.LENGTH_LONG).show()
+        }
+    }
+
     /**
      * Document taps open inside MeowMeow first. Android's chooser is available
      * from the reader only after the user explicitly chooses "Open with…".
@@ -521,14 +538,7 @@ class MainActivity : ComponentActivity() {
      */
     private fun openFile(entry: FileEntry) {
         try {
-            val original = Uri.parse(entry.id)
-            val readerUri = if (original.scheme == "file") {
-                FileProvider.getUriForFile(
-                    this,
-                    packageName + ".fileprovider",
-                    File(requireNotNull(original.path))
-                )
-            } else original
+            val readerUri = FileSharing.uriForEntry(this, entry)
             val readerIntent = Intent(this, ReaderActivity::class.java).apply {
                 setDataAndType(readerUri, entry.mimeType ?: "application/octet-stream")
                 putExtra(ReaderActivity.EXTRA_NAME, entry.name)
