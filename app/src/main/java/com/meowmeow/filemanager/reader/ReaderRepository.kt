@@ -51,58 +51,100 @@ class ReaderRepository(private val context: Context) {
     }
 
     /**
-     * PdfRenderer requires a seekable descriptor. Most local and SAF documents supply one,
-     * but providers that return pipes need a bounded, temporary cache copy.
+     * Reuse a single seekable PDF renderer for the lifetime of this reader.
+     * PdfRenderer is not thread-safe; all render/close operations use pdfLock.
      */
-    fun renderPdfPage(uri: Uri, pageIndex: Int, targetWidthPx: Int): PdfPage {
-        require(pageIndex >= 0)
-        val resolver = context.contentResolver
-        val originalResult = runCatching {
-            resolver.openFileDescriptor(uri, "r")?.use { descriptor ->
-                renderWithDescriptor(descriptor, pageIndex, targetWidthPx)
-            } ?: throw IOException("No readable PDF file descriptor.")
-        }
-        originalResult.getOrNull()?.let { return it }
-        // A deliberate safety limit is not a reason to copy and retry a large file.
-        originalResult.exceptionOrNull()?.let { failure ->
-            if (failure is ReaderLimitException) throw failure
-        }
+    private val pdfLock = Any()
+    private var pdfSession: PdfSession? = null
+    private var closed = false
 
-        // Fallback: use app-private cache only, never external storage.
-        val temp = File.createTempFile("reader-", ".pdf", context.cacheDir)
-        try {
-            resolver.openInputStream(uri)?.use { source ->
-                FileOutputStream(temp).use { target ->
-                    val buffer = ByteArray(16_384)
-                    var total = 0L
-                    while (true) {
-                        val size = source.read(buffer)
-                        if (size < 0) break
-                        total += size
-                        if (total > MAX_PDF_BYTES) throw ReaderLimitException(
-                            "PDF is too large to preview safely (75 MiB limit)."
-                        )
-                        target.write(buffer, 0, size)
-                    }
-                }
-            } ?: throw IOException("PDF data is unavailable.")
-            ParcelFileDescriptor.open(temp, ParcelFileDescriptor.MODE_READ_ONLY).use { fd ->
-                return renderWithDescriptor(fd, pageIndex, targetWidthPx)
+    private class PdfSession(
+        val uri: Uri,
+        val renderer: PdfRenderer,
+        val descriptor: ParcelFileDescriptor,
+        val privateCopy: File?
+    ) {
+        fun close() {
+            try {
+                renderer.close()
+            } finally {
+                runCatching { descriptor.close() }
+                privateCopy?.delete()
             }
-        } finally {
-            temp.delete()
         }
     }
 
-    private fun renderWithDescriptor(
-        descriptor: ParcelFileDescriptor,
-        pageIndex: Int,
-        targetWidthPx: Int
-    ): PdfPage {
-        if (descriptor.statSize > MAX_PDF_BYTES) {
-            throw ReaderLimitException("PDF is too large to preview safely (75 MiB limit).")
+    /**
+     * Pipe-backed providers cannot be rendered directly. Copy only those
+     * documents into a bounded private file, once per document/session.
+     * Malformed PDFs are not repeatedly copied and retried.
+     */
+    private fun openPdfSession(uri: Uri): PdfSession {
+        val resolver = context.contentResolver
+        var descriptor: ParcelFileDescriptor? = null
+        var privateCopy: File? = null
+        try {
+            descriptor = resolver.openFileDescriptor(uri, "r")
+            if (descriptor == null || descriptor.statSize < 0L) {
+                descriptor?.close()
+                descriptor = null
+                privateCopy = copyPdfToPrivateCache(uri)
+                descriptor = ParcelFileDescriptor.open(
+                    privateCopy, ParcelFileDescriptor.MODE_READ_ONLY
+                )
+            }
+            if (descriptor.statSize > MAX_PDF_BYTES) {
+                throw ReaderLimitException("PDF is too large to preview safely (75 MiB limit).")
+            }
+            // A malformed but seekable PDF fails here. Do not retry by copying.
+            val renderer = PdfRenderer(descriptor)
+            return PdfSession(uri, renderer, descriptor, privateCopy)
+        } catch (failure: Exception) {
+            runCatching { descriptor?.close() }
+            privateCopy?.delete()
+            throw failure
         }
-        PdfRenderer(descriptor).use { renderer ->
+    }
+
+    private fun copyPdfToPrivateCache(uri: Uri): File {
+        val file = File.createTempFile("reader-", ".pdf", context.cacheDir)
+        try {
+            context.contentResolver.openInputStream(uri)?.use { source ->
+                FileOutputStream(file).use { target ->
+                    val buffer = ByteArray(16_384)
+                    var total = 0L
+                    while (true) {
+                        val count = source.read(buffer)
+                        if (count < 0) break
+                        total += count
+                        if (total > MAX_PDF_BYTES) {
+                            throw ReaderLimitException(
+                                "PDF is too large to preview safely (75 MiB limit)."
+                            )
+                        }
+                        target.write(buffer, 0, count)
+                    }
+                }
+            } ?: throw IOException("PDF data is unavailable.")
+            return file
+        } catch (failure: Exception) {
+            file.delete()
+            throw failure
+        }
+    }
+
+    /** Only one rendering at a time; page changes do not reopen/copy the PDF. */
+    fun renderPdfPage(uri: Uri, pageIndex: Int, targetWidthPx: Int): PdfPage =
+        synchronized(pdfLock) {
+            check(!closed) { "PDF reader is closed." }
+            require(pageIndex >= 0)
+            val active = pdfSession
+            val session = if (active?.uri == uri) active else {
+                active?.close()
+                pdfSession = null
+                openPdfSession(uri).also { pdfSession = it }
+            }
+            val renderer = session.renderer
             val count = renderer.pageCount
             require(count > 0) { "Empty PDF document" }
             require(pageIndex < count) { "Page number is out of range" }
@@ -123,8 +165,17 @@ class ReaderRepository(private val context: Context) {
                     bitmap.recycle()
                     throw failure
                 }
-                return PdfPage(bitmap, pageIndex, count)
+                PdfPage(bitmap, pageIndex, count)
             }
+        }
+
+    /** Release native PDF resources and remove private temporary copies. */
+    fun close() {
+        synchronized(pdfLock) {
+            if (closed) return
+            closed = true
+            pdfSession?.close()
+            pdfSession = null
         }
     }
 }
