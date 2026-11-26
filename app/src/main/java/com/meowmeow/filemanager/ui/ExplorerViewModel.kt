@@ -187,6 +187,7 @@ class ExplorerViewModel(
     fun startSearch(query: String, kind: FileKind, scope: SearchScope) {
         cancelSearch()
         val startFolder = searchStartFolder(folders.firstOrNull(), folders.lastOrNull(), scope)?.file ?: return
+        if (!taskCenter.allowScan("Search selected folder", scopedTaskScope(startFolder))) return
         var taskToken = -1L
         val searchTask = viewModelScope.launch(start = CoroutineStart.LAZY) {
             _search.value = FileSearchState(isRunning = true)

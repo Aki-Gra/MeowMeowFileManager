@@ -159,6 +159,7 @@ class DeviceExplorerViewModel(
             return
         }
         val startFolder = searchStartFolder(folders.firstOrNull(), folders.lastOrNull(), scope) ?: return
+        if (!taskCenter.allowScan("Search device files", deviceTaskScope(startFolder))) return
         var taskToken = -1L
         val searchTask = viewModelScope.launch(start = CoroutineStart.LAZY) {
             _search.value = FileSearchState(isRunning = true)

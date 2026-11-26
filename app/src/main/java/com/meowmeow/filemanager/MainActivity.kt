@@ -92,10 +92,10 @@ class MainActivity : ComponentActivity() {
             this, FileAnalysisViewModel.Factory(applicationContext, taskCenter)
         )[FileAnalysisViewModel::class.java]
         val copy = ViewModelProvider(
-            this, CopyViewModel.Factory(applicationContext)
+            this, CopyViewModel.Factory(applicationContext, taskCenter)
         )[CopyViewModel::class.java]
         val bulk = ViewModelProvider(
-            this, BulkViewModel.Factory(applicationContext)
+            this, BulkViewModel.Factory(applicationContext, taskCenter)
         )[BulkViewModel::class.java]
         val supported = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
 
@@ -407,7 +407,7 @@ class MainActivity : ComponentActivity() {
                                 usingDevice = usingDevice,
                                 sourcePath = if (usingDevice) deviceState.path else scopedState.path,
                                 onBack = { page = Page.CLEANUP },
-                                onLeave = {},
+                                onLeave = analysis::cancelDeleteConfirmation,
                                 onStart = { kind, scope, minimumMiB ->
                                     val folder = if (usingDevice) device.analysisFolder(scope)
                                         else scoped.analysisFolder(scope)
@@ -470,7 +470,12 @@ class MainActivity : ComponentActivity() {
                                         Page.FILES
                                     }
                                     BackgroundTaskKind.DUPLICATE_SCAN,
-                                    BackgroundTaskKind.LARGE_FILE_SCAN -> Page.ANALYSIS
+                                    BackgroundTaskKind.LARGE_FILE_SCAN,
+                                    BackgroundTaskKind.DUPLICATE_DELETE -> Page.ANALYSIS
+                                    BackgroundTaskKind.FILE_COPY,
+                                    BackgroundTaskKind.BULK_OPERATION -> Page.FILES
+                                    BackgroundTaskKind.DOWNLOADS_SCAN,
+                                    BackgroundTaskKind.DOWNLOADS_DELETE -> Page.CLEANUP
                                 }
                             },
                             onStop = taskCenter::stop,

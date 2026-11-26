@@ -86,6 +86,7 @@ class FileAnalysisViewModel(
 
     fun reset() {
         if (_state.value.isDeleting) return
+        if (root != null && !taskCenter.allowScan("Start file analysis", copyTaskScope(root))) return
         verifiedTargets.clear()
         scanGeneration++
         job?.cancel()
