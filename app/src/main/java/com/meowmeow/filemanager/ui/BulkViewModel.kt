@@ -265,7 +265,10 @@ class BulkViewModel(
             }
         }
         job = operationTask
-        val scopes = mutationPlaces().map(::copyTaskScope)
+        // A bulk COPY reads its sources too. Lock both source handles and
+        // destinations against destructive edits while the job is active.
+        val scopes = (chosen.values.map { it.first } + listOfNotNull(destination))
+            .map(::copyTaskScope)
         val token = taskCenter.begin(
             BackgroundTaskKind.BULK_OPERATION,
             scopes.firstOrNull() ?: com.meowmeow.filemanager.model.TaskScope.Unknown,

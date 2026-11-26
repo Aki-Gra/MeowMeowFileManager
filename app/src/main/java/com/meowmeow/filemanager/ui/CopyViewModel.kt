@@ -150,6 +150,7 @@ class CopyViewModel(
         job = copyTask
         val token = taskCenter.begin(
             BackgroundTaskKind.FILE_COPY, copyTaskScope(destination),
+            affectedScopes = listOf(copyTaskScope(source), copyTaskScope(destination)),
             readOnly = false, cancel = { copyTask.cancel() }
         )
         copyTask.invokeOnCompletion { cause ->
