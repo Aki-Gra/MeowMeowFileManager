@@ -4,6 +4,9 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
 import org.junit.Test
 import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 
 class DocumentTextExtractorTest {
     @Test fun decodesBomTextFiles() {
@@ -11,6 +14,40 @@ class DocumentTextExtractorTest {
             0xEF.toByte(), 0xBB.toByte(), 0xBF.toByte(), 'h'.code.toByte(), 'e'.code.toByte(),
             'l'.code.toByte(), 'l'.code.toByte(), 'o'.code.toByte()
         )))
+    }
+
+    private fun archive(vararg entries: Pair<String, ByteArray>): ByteArray {
+        val out = ByteArrayOutputStream()
+        ZipOutputStream(out).use { zip ->
+            entries.forEach { (name, bytes) ->
+                zip.putNextEntry(ZipEntry(name))
+                zip.write(bytes)
+                zip.closeEntry()
+            }
+        }
+        return out.toByteArray()
+    }
+
+    @Test fun parsesSmallValidOfficeDocument() {
+        val docx = archive(
+            "metadata.xml" to "<meta/>".toByteArray(),
+            "word/document.xml" to
+                "<w:document xmlns:w=\"urn:word\"><w:body><w:p><w:r><w:t>Hello</w:t></w:r></w:p></w:body></w:document>".toByteArray()
+        )
+        assertEquals("Hello", DocumentTextExtractor.extractOfficeText(
+            ByteArrayInputStream(docx), ReaderFormat.DOCX
+        ))
+    }
+
+    @Test fun blocksLargeDecompressionInSkippedPart() {
+        // Highly compressible payload: small archive, big decompressed entry.
+        val bomb = archive(
+            "skipped.bin" to ByteArray(9 * 1024 * 1024),
+            "word/document.xml" to "<w:t>Too late</w:t>".toByteArray()
+        )
+        assertThrows(ReaderLimitException::class.java) {
+            DocumentTextExtractor.extractOfficeText(ByteArrayInputStream(bomb), ReaderFormat.DOCX)
+        }
     }
 
     @Test fun limitsInputBytes() {

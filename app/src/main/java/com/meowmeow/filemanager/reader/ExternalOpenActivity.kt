@@ -7,6 +7,11 @@ import android.os.Bundle
 import android.provider.OpenableColumns
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * Exported ACTION_VIEW entry point for files opened *from other apps*.
@@ -19,37 +24,46 @@ import androidx.activity.ComponentActivity
 class ExternalOpenActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        try {
-            if (intent?.action != Intent.ACTION_VIEW) {
-                showError()
-                return
-            }
-            val uri = intent?.data
-            if (uri == null || uri.scheme != "content") {
-                showError()
-                return
-            }
-
-            val name = displayName(uri)
-            val mime = intent.type
-                ?: runCatching { contentResolver.getType(uri) }.getOrNull()
-            if (ReaderFormat.detect(name, mime) == ReaderFormat.UNSUPPORTED) {
-                showError()
-                return
-            }
-
-            val reader = Intent(this, ReaderActivity::class.java).apply {
-                setDataAndType(uri, mime ?: "application/octet-stream")
-                clipData = ClipData.newUri(contentResolver, "Document", uri)
-                putExtra(ReaderActivity.EXTRA_NAME, name)
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            }
-            startActivity(reader)
-        } catch (_: Exception) {
-            // Never include incoming provider exception text or private file names.
-            Toast.makeText(this, "Unable to open this file", Toast.LENGTH_LONG).show()
-        } finally {
+        val suppliedIntent = intent
+        val uri = suppliedIntent?.data
+        if (suppliedIntent?.action != Intent.ACTION_VIEW ||
+            uri == null || uri.scheme != "content"
+        ) {
+            showError()
             finish()
+            return
+        }
+        // SAF / third-party content providers may block on metadata queries.
+        // Never call them from the main thread during Activity startup.
+        lifecycleScope.launch {
+            try {
+                val (name, mime) = withContext(Dispatchers.IO) {
+                    displayName(uri) to (
+                        suppliedIntent.type ?: runCatching {
+                            contentResolver.getType(uri)
+                        }.getOrNull()
+                    )
+                }
+                if (ReaderFormat.detect(name, mime) == ReaderFormat.UNSUPPORTED) {
+                    showError()
+                    return@launch
+                }
+                val reader = Intent(this@ExternalOpenActivity, ReaderActivity::class.java).apply {
+                    setDataAndType(uri, mime ?: "application/octet-stream")
+                    clipData = ClipData.newUri(contentResolver, "Document", uri)
+                    putExtra(ReaderActivity.EXTRA_NAME, name)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                startActivity(reader)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                Toast.makeText(
+                    this@ExternalOpenActivity, "Unable to open this file", Toast.LENGTH_LONG
+                ).show()
+            } finally {
+                finish()
+            }
         }
     }
 

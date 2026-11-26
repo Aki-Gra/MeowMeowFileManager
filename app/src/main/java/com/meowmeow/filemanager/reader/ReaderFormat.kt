@@ -39,6 +39,24 @@ enum class ReaderFormat {
         )
 
         fun detect(name: String, mime: String?): ReaderFormat {
+            // A specific MIME from a document provider is more reliable than a
+            // filename. Generic/octet-stream types fall back to the extension.
+            val normalized = mime?.substringBefore(';')?.trim()?.lowercase(Locale.ROOT)
+            val knownMime = when (normalized) {
+                "application/pdf" -> PDF
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document" -> DOCX
+                "application/msword" -> DOC
+                "application/vnd.oasis.opendocument.text" -> ODT
+                in imageMimes -> IMAGE
+                "application/json", "application/xml", "text/xml",
+                "application/x-yaml", "application/yaml", "application/x-toml",
+                "application/toml", "application/javascript", "application/x-javascript",
+                "application/ecmascript", "application/sql", "application/x-sh",
+                "application/x-ndjson", "application/ld+json", "application/geo+json",
+                "application/xhtml+xml" -> TEXT
+                else -> if (normalized?.startsWith("text/") == true) TEXT else null
+            }
+            if (knownMime != null) return knownMime
             val extension = name.substringAfterLast('.', "").lowercase(Locale.ROOT)
             return when (extension) {
                 "pdf" -> PDF
@@ -47,20 +65,7 @@ enum class ReaderFormat {
                 "odt" -> ODT
                 in imageExtensions -> IMAGE
                 in plainTextExtensions -> TEXT
-                else -> when (mime?.lowercase(Locale.ROOT)?.substringBefore(';')) {
-                    "application/pdf" -> PDF
-                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document" -> DOCX
-                    "application/msword" -> DOC
-                    "application/vnd.oasis.opendocument.text" -> ODT
-                    in imageMimes -> IMAGE
-                    "text/plain", "application/json", "application/xml", "text/xml",
-                    "text/csv", "text/markdown", "application/x-yaml", "application/yaml",
-                    "application/x-toml", "application/toml", "application/javascript",
-                    "application/x-javascript", "application/ecmascript", "application/sql",
-                    "application/x-sh", "application/x-ndjson", "application/ld+json",
-                    "application/geo+json", "application/xhtml+xml" -> TEXT
-                    else -> if (mime?.startsWith("text/", ignoreCase = true) == true) TEXT else UNSUPPORTED
-                }
+                else -> UNSUPPORTED
             }
         }
     }

@@ -412,7 +412,15 @@ class MainActivity : ComponentActivity() {
                                     analysis.scan(folder, kind, scope, minimumMiB, origin)
                                 },
                                 onCancel = analysis::cancel,
-                                onOpenFile = { entry -> openFile(entry) },
+                                onOpenFile = { entry ->
+                                    val siblings = if (analysisState.kind ==
+                                        com.meowmeow.filemanager.model.AnalysisKind.LARGE
+                                    ) analysisState.large.map { it.entry }
+                                    else analysisState.duplicateGroups.flatMap { group ->
+                                        group.members.map { it.entry }
+                                    }
+                                    openFile(entry, siblings)
+                                },
                                 outdatedResults = taskState.latestOutdated(
                                     BackgroundTaskKind.DUPLICATE_SCAN,
                                     BackgroundTaskKind.LARGE_FILE_SCAN

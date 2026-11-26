@@ -13,22 +13,47 @@ internal object DocumentTextExtractor {
     private const val MAX_XML_BYTES = 4 * 1024 * 1024
     private const val MAX_ENTRIES = 512
     private const val MAX_CHARACTERS = 2_000_000
+    // Maximum total inflation from all ZIP parts, including discarded entries.
+    private const val MAX_EXPANDED_BYTES = 32 * 1024 * 1024
+    private const val MAX_SKIPPED_PART_BYTES = 8 * 1024 * 1024
 
     fun extractOfficeText(source: InputStream, format: ReaderFormat): String {
         require(format == ReaderFormat.DOCX || format == ReaderFormat.ODT)
         val requested = if (format == ReaderFormat.DOCX) "word/document.xml" else "content.xml"
         val xml = ZipInputStream(source).use { archive ->
+            val buffer = ByteArray(8192)
             var entryCount = 0
+            var expandedTotal = 0L
             var extracted: ByteArray? = null
             while (true) {
                 val entry = archive.nextEntry ?: break
                 entryCount++
-                if (entryCount > MAX_ENTRIES) throw ReaderLimitException("Document has too many parts to preview.")
-                if (!entry.isDirectory && entry.name == requested) {
-                    extracted = readLimited(archive, MAX_XML_BYTES)
-                    break
+                if (entryCount > MAX_ENTRIES) {
+                    throw ReaderLimitException("Document has too many parts to preview.")
+                }
+                val isDocument = !entry.isDirectory && entry.name == requested
+                val output = if (isDocument) ByteArrayOutputStream() else null
+                var partBytes = 0L
+                // Explicitly drain skipped entries. ZipInputStream.closeEntry()
+                // inflates the rest without giving us a chance to enforce a limit.
+                while (true) {
+                    val read = archive.read(buffer)
+                    if (read < 0) break
+                    partBytes += read.toLong()
+                    expandedTotal += read.toLong()
+                    if (expandedTotal > MAX_EXPANDED_BYTES ||
+                        partBytes > if (isDocument) MAX_XML_BYTES.toLong()
+                                    else MAX_SKIPPED_PART_BYTES.toLong()
+                    ) {
+                        throw ReaderLimitException("Document archive is too large to preview safely.")
+                    }
+                    output?.write(buffer, 0, read)
                 }
                 archive.closeEntry()
+                if (isDocument) {
+                    extracted = output!!.toByteArray()
+                    break
+                }
             }
             extracted ?: throw IOException("Document text part was not found.")
         }

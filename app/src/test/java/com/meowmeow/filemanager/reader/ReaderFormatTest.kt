@@ -36,6 +36,14 @@ class ReaderFormatTest {
         assertEquals(null, ReaderFormat.imageMimeType("unknown.xyz"))
     }
 
+    @Test fun specificMimeBeatsMisleadingExtension() {
+        assertEquals(ReaderFormat.PDF, ReaderFormat.detect("wrong.txt", "application/pdf"))
+        assertEquals(ReaderFormat.IMAGE, ReaderFormat.detect("wrong.docx", "image/png"))
+        assertEquals(ReaderFormat.TEXT, ReaderFormat.detect("wrong.pdf", "text/plain"))
+        assertEquals(ReaderFormat.PDF, ReaderFormat.detect("file.pdf", "application/octet-stream"))
+        assertEquals(ReaderFormat.UNSUPPORTED, ReaderFormat.detect("file.zip", "application/zip"))
+    }
+
     @Test fun mimeFallbackAndUnknownTypes() {
         assertEquals(ReaderFormat.DOCX, ReaderFormat.detect("file", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"))
         assertEquals(ReaderFormat.TEXT, ReaderFormat.detect("file", "text/plain"))
