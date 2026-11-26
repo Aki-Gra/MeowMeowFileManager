@@ -11,7 +11,10 @@ import java.io.File
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
-enum class BackgroundTaskKind { DEVICE_SEARCH, FOLDER_SEARCH, DUPLICATE_SCAN, LARGE_FILE_SCAN }
+enum class BackgroundTaskKind {
+    DEVICE_SEARCH, FOLDER_SEARCH, DUPLICATE_SCAN, LARGE_FILE_SCAN,
+    FILE_COPY, BULK_OPERATION, DUPLICATE_DELETE, DOWNLOADS_SCAN, DOWNLOADS_DELETE
+}
 enum class BackgroundTaskStatus { RUNNING, STOPPING, COMPLETED, STOPPED, FAILED, OUTDATED }
 
 data class BackgroundTask(
@@ -20,6 +23,8 @@ data class BackgroundTask(
     val scope: TaskScope,
     val label: String,
     val status: BackgroundTaskStatus,
+    val affectedScopes: List<TaskScope> = listOf(scope),
+    val readOnly: Boolean = true,
     val folders: Int = 0,
     val files: Int = 0,
     val hashed: Int = 0
@@ -53,13 +58,20 @@ class TaskCenterViewModel : ViewModel() {
     private var sequence = 0L
 
     @Synchronized
-    fun begin(kind: BackgroundTaskKind, scope: TaskScope, cancel: () -> Unit): Long {
+    fun begin(
+        kind: BackgroundTaskKind, scope: TaskScope,
+        affectedScopes: List<TaskScope> = listOf(scope),
+        readOnly: Boolean = true,
+        cancel: () -> Unit
+    ): Long {
         val id = ++sequence
         cancellation[id] = cancel
         val previous = _state.value.tasks
         _state.value = _state.value.copy(
-            tasks = (previous + BackgroundTask(id, kind, scope, title(kind),
-                BackgroundTaskStatus.RUNNING)).takeLast(20),
+            tasks = (previous + BackgroundTask(
+                id, kind, scope, title(kind), BackgroundTaskStatus.RUNNING,
+                affectedScopes = affectedScopes, readOnly = readOnly
+            )).takeLast(20),
             notice = null
         )
         return id
@@ -92,7 +104,9 @@ class TaskCenterViewModel : ViewModel() {
     fun allowMutation(action: String, locations: List<TaskScope>?): Boolean {
         val blocking = _state.value.tasks.filter { task ->
             task.active && (locations.isNullOrEmpty() ||
-                locations.any { scopesMayOverlap(task.scope, it) })
+                locations.any { location ->
+                    task.affectedScopes.any { scopesMayOverlap(it, location) }
+                })
         }
         if (blocking.isEmpty()) return true
         _state.value = _state.value.copy(
@@ -101,6 +115,21 @@ class TaskCenterViewModel : ViewModel() {
                     "Storage access may change while tasks are reading files."
                 else "An active task may be using files affected by this action.")
         )
+        return false
+    }
+
+    /** Read-only tasks can overlap other scans, but not an active writer. */
+    @Synchronized
+    fun allowScan(action: String, location: TaskScope): Boolean {
+        val blocking = _state.value.tasks.filter { task ->
+            task.active && !task.readOnly &&
+                task.affectedScopes.any { scopesMayOverlap(it, location) }
+        }
+        if (blocking.isEmpty()) return true
+        _state.value = _state.value.copy(conflict = TaskConflict(
+            action, blocking.map { it.id },
+            "A file-changing task may be modifying the requested scan location."
+        ))
         return false
     }
 
@@ -138,7 +167,7 @@ class TaskCenterViewModel : ViewModel() {
     @Synchronized
     fun noteChanged(locations: List<TaskScope>?) {
         _state.value = _state.value.copy(tasks = _state.value.tasks.map { task ->
-            if ((task.status == BackgroundTaskStatus.COMPLETED ||
+            if (task.readOnly && (task.status == BackgroundTaskStatus.COMPLETED ||
                 task.status == BackgroundTaskStatus.OUTDATED) &&
                 (locations.isNullOrEmpty() || locations.any {
                     scopesMayOverlap(task.scope, it)
@@ -176,6 +205,11 @@ class TaskCenterViewModel : ViewModel() {
         BackgroundTaskKind.FOLDER_SEARCH -> "Folder search"
         BackgroundTaskKind.DUPLICATE_SCAN -> "Duplicate scan"
         BackgroundTaskKind.LARGE_FILE_SCAN -> "Large-file scan"
+        BackgroundTaskKind.FILE_COPY -> "Copy files"
+        BackgroundTaskKind.BULK_OPERATION -> "Bulk file operation"
+        BackgroundTaskKind.DUPLICATE_DELETE -> "Delete duplicates"
+        BackgroundTaskKind.DOWNLOADS_SCAN -> "Downloads scan"
+        BackgroundTaskKind.DOWNLOADS_DELETE -> "Downloads cleanup"
     }
 }
 
