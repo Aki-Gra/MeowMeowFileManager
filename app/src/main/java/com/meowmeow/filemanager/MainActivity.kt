@@ -8,6 +8,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Environment
 import android.provider.Settings
+import android.provider.DocumentsContract
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -69,16 +70,28 @@ private enum class Page { FILES, STORAGE, CLEANUP, ANALYSIS, SETTINGS }
 
 class MainActivity : ComponentActivity() {
     private var allFilesGranted by mutableStateOf(false)
+    private val taskCenter by lazy {
+        ViewModelProvider(this)[TaskCenterViewModel::class.java]
+    }
 
     override fun onResume() {
         super.onResume()
         allFilesGranted = canBrowseSharedStorage()
+        val allowedSafTrees = contentResolver.persistedUriPermissions
+            .filter { it.isReadPermission }
+            .mapNotNull { permission ->
+                try {
+                    permission.uri.authority?.let { authority ->
+                        authority to DocumentsContract.getTreeDocumentId(permission.uri)
+                    }
+                } catch (_: Exception) { null }
+            }.toSet()
+        taskCenter.reconcileSafPermissions(allowedSafTrees)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val errorLog = (application as MeowMeowApp).errorLog
-        val taskCenter = ViewModelProvider(this)[TaskCenterViewModel::class.java]
         val scoped = ViewModelProvider(
             this, ExplorerViewModel.Factory(applicationContext, taskCenter)
         )[ExplorerViewModel::class.java]

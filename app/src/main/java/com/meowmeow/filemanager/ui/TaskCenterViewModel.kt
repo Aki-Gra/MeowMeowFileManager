@@ -200,6 +200,34 @@ class TaskCenterViewModel : ViewModel() {
         noteChanged(null)
     }
 
+    /**
+     * Called when the app regains focus. Android can revoke SAF permissions
+     * outside MeowMeow; a stale tree grant must not keep working in the
+     * background as if permission were unchanged.
+     */
+    fun reconcileSafPermissions(allowed: Set<Pair<String, String>>) {
+        val invalid = synchronized(this) {
+            val stale = _state.value.tasks.filter { task ->
+                task.active && task.affectedScopes.any { scope ->
+                    scope is TaskScope.Saf &&
+                        (scope.authority to scope.treeId) !in allowed
+                }
+            }.map { it.id }
+            if (stale.isNotEmpty()) {
+                _state.value = _state.value.copy(
+                    notice = "Selected folder permission was revoked. Affected tasks were stopped."
+                )
+            }
+            stale
+        }
+        invalid.forEach(::stop)
+        if (invalid.isNotEmpty()) {
+            val affectedScopes = _state.value.tasks.filter { it.id in invalid }
+                .flatMap { it.affectedScopes }
+            noteChanged(affectedScopes)
+        }
+    }
+
     private fun title(kind: BackgroundTaskKind) = when (kind) {
         BackgroundTaskKind.DEVICE_SEARCH -> "Device file search"
         BackgroundTaskKind.FOLDER_SEARCH -> "Folder search"

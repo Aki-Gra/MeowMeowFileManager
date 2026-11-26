@@ -73,6 +73,34 @@ class TaskCenterViewModelTest {
         assertEquals(BackgroundTaskStatus.OUTDATED, tasks.state.value.tasks.single().status)
     }
 
+    @Test fun externallyRevokedSafGrantStopsOnlyAffectedTasks() {
+        val tasks = TaskCenterViewModel()
+        var stoppedSaf = false
+        var stoppedDevice = false
+        val saf = tasks.begin(
+            BackgroundTaskKind.FOLDER_SEARCH, TaskScope.Saf("documents", "tree-1")
+        ) { stoppedSaf = true }
+        tasks.begin(BackgroundTaskKind.DEVICE_SEARCH, downloads) {
+            stoppedDevice = true
+        }
+        tasks.reconcileSafPermissions(emptySet())
+        assertTrue(stoppedSaf)
+        assertFalse(stoppedDevice)
+        assertEquals(BackgroundTaskStatus.STOPPING,
+            tasks.state.value.tasks.first { it.id == saf }.status)
+        assertTrue(tasks.state.value.notice?.contains("revoked") == true)
+    }
+
+    @Test fun persistedSafGrantKeepsSearchRunning() {
+        val tasks = TaskCenterViewModel()
+        var stopped = false
+        tasks.begin(BackgroundTaskKind.FOLDER_SEARCH,
+            TaskScope.Saf("documents", "tree-1")) { stopped = true }
+        tasks.reconcileSafPermissions(setOf("documents" to "tree-1"))
+        assertFalse(stopped)
+        assertEquals(1, tasks.state.value.runningCount)
+    }
+
     @Test fun externalPermissionLossStopsAllRunningTasks() {
         val tasks = TaskCenterViewModel()
         var stops = 0
