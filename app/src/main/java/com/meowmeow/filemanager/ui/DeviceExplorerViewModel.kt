@@ -44,7 +44,6 @@ class DeviceExplorerViewModel(
     private val searchRoutes = mutableMapOf<String, List<File>>()
 
     fun openRoot() {
-        cancelSearch()
         if (!repository.hasAccess()) {
             _state.value = ExplorerUiState(isLoading = false)
             return
@@ -55,7 +54,6 @@ class DeviceExplorerViewModel(
     }
 
     fun openDownloads() {
-        cancelSearch()
         if (!repository.hasAccess()) return
         folders.clear()
         folders.add(repository.root())

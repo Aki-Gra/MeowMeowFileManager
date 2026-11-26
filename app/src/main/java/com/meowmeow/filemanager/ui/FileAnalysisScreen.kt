@@ -67,6 +67,7 @@ fun FileAnalysisScreen(
     onStart: (AnalysisKind, SearchScope, Int) -> Unit,
     onCancel: () -> Unit,
     onOpenFile: (FileEntry) -> Unit,
+    outdatedResults: Boolean,
     onToggleDuplicate: (String) -> Unit,
     onSelectGroup: (List<String>) -> Unit,
     onRequestDelete: (DuplicateGroupResult) -> Unit,
@@ -75,9 +76,9 @@ fun FileAnalysisScreen(
     onDismissDelete: () -> Unit,
     onCancelDeletion: () -> Unit
 ) {
-    var mode by remember { mutableStateOf(AnalysisKind.LARGE) }
-    var scope by remember { mutableStateOf(SearchScope.CURRENT_FOLDER) }
-    var threshold by remember { mutableStateOf(50) }
+    var mode by remember { mutableStateOf(state.kind) }
+    var scope by remember { mutableStateOf(state.scope) }
+    var threshold by remember { mutableStateOf(state.thresholdMiB) }
     var locationMenu by remember { mutableStateOf(false) }
     var thresholdMenu by remember { mutableStateOf(false) }
     val rootLabel = if (usingDevice) "Device storage root + subfolders"
@@ -239,6 +240,11 @@ fun FileAnalysisScreen(
             state.deleteNotice?.let {
                 Text(it, style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error)
+            }
+            if (outdatedResults) {
+                Text("Files changed since this scan. Results may be outdated. Scan again.",
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall)
             }
             state.notice?.let {
                 Text(it, color = MaterialTheme.colorScheme.error,
