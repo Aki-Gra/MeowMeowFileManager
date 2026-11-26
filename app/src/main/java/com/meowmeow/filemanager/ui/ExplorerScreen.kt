@@ -98,7 +98,7 @@ fun ExplorerScreen(
     state: ExplorerUiState,
     onChooseFolder: () -> Unit,
     onOpenDirectory: (FileEntry) -> Unit,
-    onOpenFile: (FileEntry) -> Unit,
+    onOpenFile: (FileEntry, List<FileEntry>) -> Unit,
     onShare: (FileEntry) -> Unit,
     onNavigateUp: () -> Unit,
     onRefresh: () -> Unit,
@@ -501,7 +501,7 @@ fun ExplorerScreen(
                                     if (hit.entry.isDirectory) {
                                         onOpenSearchFolder(hit)
                                         searchVisible = false
-                                    } else onOpenFile(hit.entry)
+                                    } else onOpenFile(hit.entry, searchState.hits.map { it.entry })
                                 },
                                 leadingContent = {
                                     Icon(
@@ -645,7 +645,7 @@ fun ExplorerScreen(
                             items(state.entries, key = { it.id }) { entry ->
                                 FileRow(
                                     entry = entry,
-                                    onOpen = { if (entry.isDirectory) onOpenDirectory(entry) else onOpenFile(entry) },
+                                    onOpen = { if (entry.isDirectory) onOpenDirectory(entry) else onOpenFile(entry, state.entries) },
                                     onRename = { renameTarget = entry },
                                     onDelete = { deleteTarget = entry },
                                     onCopy = { onCopy(entry) },
@@ -673,7 +673,7 @@ fun ExplorerScreen(
                                     entry = entry,
                                     mode = viewMode,
                                     thumbnails = thumbnailLoader,
-                                    onOpen = { if (entry.isDirectory) onOpenDirectory(entry) else onOpenFile(entry) },
+                                    onOpen = { if (entry.isDirectory) onOpenDirectory(entry) else onOpenFile(entry, state.entries) },
                                     onRename = { renameTarget = entry },
                                     onDelete = { deleteTarget = entry },
                                     onCopy = { onCopy(entry) },

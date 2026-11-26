@@ -44,6 +44,7 @@ import com.meowmeow.filemanager.diagnostics.formatErrorLog
 import com.meowmeow.filemanager.diagnostics.suggestedErrorLogFileName
 import com.meowmeow.filemanager.model.FileEntry
 import com.meowmeow.filemanager.reader.ReaderActivity
+import com.meowmeow.filemanager.reader.ImageGallerySessions
 import com.meowmeow.filemanager.sharing.FileSharing
 import com.meowmeow.filemanager.ui.TaskCenterViewModel
 import com.meowmeow.filemanager.ui.TaskCenterOverlay
@@ -250,7 +251,7 @@ class MainActivity : ComponentActivity() {
                                 onOpenDirectory = { entry ->
                                     if (usingDevice) device.openDirectory(entry) else scoped.openDirectory(entry)
                                 },
-                                onOpenFile = ::openFile,
+                                onOpenFile = { entry, siblings -> openFile(entry, siblings) },
                                 onShare = ::shareFile,
                                 onNavigateUp = {
                                     if (usingDevice) device.navigateUp() else scoped.navigateUp()
@@ -411,7 +412,7 @@ class MainActivity : ComponentActivity() {
                                     analysis.scan(folder, kind, scope, minimumMiB, origin)
                                 },
                                 onCancel = analysis::cancel,
-                                onOpenFile = ::openFile,
+                                onOpenFile = { entry -> openFile(entry) },
                                 outdatedResults = taskState.latestOutdated(
                                     BackgroundTaskKind.DUPLICATE_SCAN,
                                     BackgroundTaskKind.LARGE_FILE_SCAN
@@ -534,16 +535,19 @@ class MainActivity : ComponentActivity() {
      * from the reader only after the user explicitly chooses "Open with…".
      * This same callback handles files from browsing, search and analysis.
      */
-    private fun openFile(entry: FileEntry) {
+    private fun openFile(entry: FileEntry, siblings: List<FileEntry> = emptyList()) {
+        val galleryToken = ImageGallerySessions.create(entry, siblings)
         try {
             val readerUri = FileSharing.uriForEntry(this, entry)
             val readerIntent = Intent(this, ReaderActivity::class.java).apply {
                 setDataAndType(readerUri, entry.mimeType ?: "application/octet-stream")
                 putExtra(ReaderActivity.EXTRA_NAME, entry.name)
+                if (galleryToken != null) putExtra(ReaderActivity.EXTRA_GALLERY_TOKEN, galleryToken)
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
             startActivity(readerIntent)
         } catch (failure: Exception) {
+            ImageGallerySessions.remove(galleryToken)
             (application as MeowMeowApp).errorLog.record(
                 ErrorArea.DOCUMENT_READER, failure, operation = ErrorOperation.READER_OPEN
             )

@@ -9,6 +9,11 @@ import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import com.meowmeow.filemanager.MeowMeowApp
 import com.meowmeow.filemanager.sharing.FileSharing
 import com.meowmeow.filemanager.diagnostics.ErrorArea
@@ -22,6 +27,13 @@ import com.meowmeow.filemanager.ui.theme.MeowMeowTheme
 class ReaderActivity : ComponentActivity() {
     private val logger get() = (application as MeowMeowApp).errorLog
 
+    override fun onDestroy() {
+        if (isFinishing) {
+            ImageGallerySessions.remove(intent?.getStringExtra(EXTRA_GALLERY_TOKEN))
+        }
+        super.onDestroy()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val documentUri = intent.data
@@ -32,21 +44,56 @@ class ReaderActivity : ComponentActivity() {
             finish()
             return
         }
-        val format = ReaderFormat.detect(name, mime)
-        val externalMime = if (format == ReaderFormat.IMAGE &&
-            (mime.isNullOrBlank() || mime == "application/octet-stream" || mime == "*/*")
-        ) ReaderFormat.imageMimeType(name) ?: mime else mime
+        val galleryToken = intent.getStringExtra(EXTRA_GALLERY_TOKEN)
+        val gallery = ImageGallerySessions.get(galleryToken)
         val repository = ReaderRepository(applicationContext)
         setContent {
+            var currentIndex by rememberSaveable(galleryToken) {
+                mutableIntStateOf(gallery?.startIndex ?: 0)
+            }
+            var currentUriString by rememberSaveable {
+                mutableStateOf(documentUri.toString())
+            }
+            var currentName by rememberSaveable { mutableStateOf(name) }
+            var currentMime by rememberSaveable { mutableStateOf(mime) }
+            val currentUri = Uri.parse(currentUriString)
+            val currentFormat = ReaderFormat.detect(currentName, currentMime)
+            val externalMime = if (currentFormat == ReaderFormat.IMAGE &&
+                (currentMime.isNullOrBlank() || currentMime == "application/octet-stream" ||
+                    currentMime == "*/*")
+            ) ReaderFormat.imageMimeType(currentName) ?: currentMime else currentMime
+
+            fun moveImage(offset: Int) {
+                val next = gallery?.images?.getOrNull(currentIndex + offset) ?: return
+                try {
+                    val nextUri = FileSharing.uriForEntry(this, next)
+                    currentUriString = nextUri.toString()
+                    currentName = next.name
+                    currentMime = next.mimeType
+                    currentIndex += offset
+                } catch (failure: Exception) {
+                    logger.record(
+                        ErrorArea.DOCUMENT_READER, failure, operation = ErrorOperation.READER_OPEN
+                    )
+                    Toast.makeText(this, "Unable to open the next picture", Toast.LENGTH_SHORT).show()
+                }
+            }
+
             MeowMeowTheme {
                 ReaderScreen(
-                    title = name,
-                    format = format,
-                    uri = documentUri,
+                    title = currentName,
+                    format = currentFormat,
+                    uri = currentUri,
                     repository = repository,
                     onClose = ::finish,
-                    onShare = { shareFile(documentUri, name, externalMime) },
-                    onExternal = { openExternally(documentUri, externalMime) },
+                    onShare = { shareFile(currentUri, currentName, externalMime) },
+                    onExternal = { openExternally(currentUri, externalMime) },
+                    galleryPosition = if (gallery != null) currentIndex + 1 else null,
+                    galleryCount = gallery?.images?.size,
+                    onPreviousImage = if (gallery != null && currentIndex > 0)
+                        ({ moveImage(-1) }) else null,
+                    onNextImage = if (gallery != null &&
+                        currentIndex + 1 < gallery.images.size) ({ moveImage(1) }) else null,
                     onReaderFailure = { error, operation ->
                         if (error !is ReaderLimitException) {
                             logger.record(ErrorArea.DOCUMENT_READER, error, operation = operation)
@@ -93,5 +140,6 @@ class ReaderActivity : ComponentActivity() {
 
     companion object {
         const val EXTRA_NAME = "reader_display_name"
+        const val EXTRA_GALLERY_TOKEN = "reader_image_gallery_token"
     }
 }
