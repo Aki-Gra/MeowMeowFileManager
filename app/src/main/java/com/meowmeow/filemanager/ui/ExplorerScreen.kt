@@ -16,6 +16,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
@@ -35,6 +38,9 @@ import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Sort
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.GridView
+import androidx.compose.material.icons.filled.ViewList
+import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
@@ -69,6 +75,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -133,6 +140,20 @@ fun ExplorerScreen(
     var creating by rememberSaveable { mutableStateOf(false) }
     var renameTarget by remember { mutableStateOf<FileEntry?>(null) }
     var deleteTarget by remember { mutableStateOf<FileEntry?>(null) }
+    val context = LocalContext.current
+    val modePrefs = remember(context) {
+        context.applicationContext.getSharedPreferences(
+            "explorer_view_preferences", android.content.Context.MODE_PRIVATE
+        )
+    }
+    var viewMode by rememberSaveable {
+        mutableStateOf(ExplorerViewMode.fromStored(modePrefs.getString("folder_view_mode", null)))
+    }
+    val thumbnailLoader = remember(context) { ExplorerThumbnails(context.applicationContext) }
+    LaunchedEffect(viewMode) {
+        modePrefs.edit().putString("folder_view_mode", viewMode.name).apply()
+    }
+    var viewMenu by remember { mutableStateOf(false) }
     var sortMenu by remember { mutableStateOf(false) }
     var optionsMenu by remember { mutableStateOf(false) }
     var searchVisible by rememberSaveable { mutableStateOf(false) }
@@ -563,18 +584,48 @@ fun ExplorerScreen(
                             "${state.entries.size} items",
                             style = MaterialTheme.typography.labelLarge
                         )
-                        Box {
-                            AssistChip(
-                                onClick = { sortMenu = true },
-                                label = { Text(state.sortMode.label) },
-                                leadingIcon = { Icon(Icons.Default.Sort, contentDescription = null) }
-                            )
-                            DropdownMenu(expanded = sortMenu, onDismissRequest = { sortMenu = false }) {
-                                SortMode.entries.forEach { sort ->
-                                    DropdownMenuItem(
-                                        text = { Text(sort.label) },
-                                        onClick = { sortMenu = false; onSort(sort) }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box {
+                                IconButton(onClick = { viewMenu = true }) {
+                                    Icon(
+                                        when (viewMode) {
+                                            ExplorerViewMode.LIST -> Icons.Default.ViewList
+                                            ExplorerViewMode.LARGE_ICONS -> Icons.Default.GridView
+                                            ExplorerViewMode.THUMBNAILS -> Icons.Default.PhotoLibrary
+                                        },
+                                        contentDescription = "Choose file view"
                                     )
+                                }
+                                DropdownMenu(
+                                    expanded = viewMenu,
+                                    onDismissRequest = { viewMenu = false }
+                                ) {
+                                    ExplorerViewMode.entries.forEach { mode ->
+                                        DropdownMenuItem(
+                                            text = { Text(
+                                                (if (viewMode == mode) "✓ " else "") + mode.label
+                                            ) },
+                                            onClick = { viewMenu = false; viewMode = mode }
+                                        )
+                                    }
+                                }
+                            }
+                            Box {
+                                AssistChip(
+                                    onClick = { sortMenu = true },
+                                    label = { Text(state.sortMode.label) },
+                                    leadingIcon = { Icon(Icons.Default.Sort, contentDescription = null) }
+                                )
+                                DropdownMenu(
+                                    expanded = sortMenu,
+                                    onDismissRequest = { sortMenu = false }
+                                ) {
+                                    SortMode.entries.forEach { sort ->
+                                        DropdownMenuItem(
+                                            text = { Text(sort.label) },
+                                            onClick = { sortMenu = false; onSort(sort) }
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -583,7 +634,8 @@ fun ExplorerScreen(
                         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                             Text("Nothing in this folder yet. 🐱")
                         }
-                    } else {
+                    } else if (viewMode == ExplorerViewMode.LIST) {
+                        // Retain the existing list unchanged as the default.
                         LazyColumn(
                             modifier = Modifier.fillMaxSize(),
                             contentPadding = PaddingValues(bottom = 100.dp)
@@ -591,6 +643,33 @@ fun ExplorerScreen(
                             items(state.entries, key = { it.id }) { entry ->
                                 FileRow(
                                     entry = entry,
+                                    onOpen = { if (entry.isDirectory) onOpenDirectory(entry) else onOpenFile(entry) },
+                                    onRename = { renameTarget = entry },
+                                    onDelete = { deleteTarget = entry },
+                                    onCopy = { onCopy(entry) },
+                                    selectionMode = bulkState.stage == BulkStage.SELECTING,
+                                    selected = entry.id in bulkState.selectedIds,
+                                    actionsEnabled = bulkState.stage == BulkStage.OFF,
+                                    onSelect = { onBulkToggle(entry) }
+                                )
+                            }
+                        }
+                    } else {
+                        // Lazy grid decodes only visible image tiles, off the UI thread.
+                        LazyVerticalGrid(
+                            columns = GridCells.Adaptive(minSize = 132.dp),
+                            modifier = Modifier.fillMaxSize(),
+                            contentPadding = PaddingValues(
+                                start = 8.dp, end = 8.dp, top = 6.dp, bottom = 100.dp
+                            ),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            gridItems(state.entries, key = { it.id }) { entry ->
+                                ExplorerFileTile(
+                                    entry = entry,
+                                    mode = viewMode,
+                                    thumbnails = thumbnailLoader,
                                     onOpen = { if (entry.isDirectory) onOpenDirectory(entry) else onOpenFile(entry) },
                                     onRename = { renameTarget = entry },
                                     onDelete = { deleteTarget = entry },
