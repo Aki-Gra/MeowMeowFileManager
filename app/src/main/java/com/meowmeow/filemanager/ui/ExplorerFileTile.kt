@@ -48,6 +48,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.meowmeow.filemanager.model.FileEntry
+import com.meowmeow.filemanager.reader.ReaderFormat
 import com.meowmeow.filemanager.ui.resultUnlessCancelled
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -88,7 +89,8 @@ internal fun ExplorerFileTile(
             } else {
                 val imageVector = when {
                     entry.isDirectory -> Icons.Default.Folder
-                    entry.mimeType?.startsWith("image/") == true -> Icons.Default.ImageIcon
+                    ReaderFormat.detect(entry.name, entry.mimeType) == ReaderFormat.IMAGE ->
+                        Icons.Default.ImageIcon
                     entry.mimeType?.startsWith("video/") == true -> Icons.Default.Movie
                     entry.mimeType?.startsWith("audio/") == true -> Icons.Default.AudioFile
                     entry.mimeType == "application/pdf" -> Icons.Default.Description
