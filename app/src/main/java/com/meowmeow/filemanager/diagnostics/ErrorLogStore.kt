@@ -16,7 +16,7 @@ enum class ErrorArea {
     SCOPED_FOLDER_PICKER, SCOPED_BROWSING, SCOPED_FILE_OPERATION,
     DEVICE_BROWSING, DEVICE_FILE_OPERATION, CLEANUP_SCAN, CLEANUP_DELETE,
     STORAGE_OVERVIEW, EXTERNAL_FILE_OPEN, APP_CRASH, DIAGNOSTICS_TEST,
-    LOG_EXPORT, DOCUMENT_READER
+    LOG_EXPORT, COPY_OPERATION, FILE_ANALYSIS, DOCUMENT_READER
 }
 /**
  * Stable, non-sensitive action identifiers. Do not reuse or rename shipped codes:
@@ -30,11 +30,22 @@ enum class ErrorOperation(val code: String, val title: String) {
     SAF_CREATE("SAF-MKDIR", "Create folder (SAF)"),
     SAF_RENAME("SAF-REN", "Rename item (SAF)"),
     SAF_DELETE("SAF-DEL", "Delete item (SAF)"),
+    FS_COPY("FS-COPY", "Copy device files"),
+    SAF_COPY("SAF-COPY", "Copy files in chosen folder"),
+    COPY_BETWEEN("COPY-MIX", "Copy between storage modes"),
+    BULK_COPY("BULK-COPY", "Bulk copy files"),
+    BULK_MOVE("BULK-MOVE", "Bulk move files"),
+    BULK_DELETE("BULK-DEL", "Bulk delete files"),
     FS_OPEN_FOLDER("FS-OPEN", "Open folder"),
     FS_LIST("FS-LIST", "List device folder"),
     FS_CREATE("FS-MKDIR", "Create device folder"),
     FS_RENAME("FS-REN", "Rename device item"),
     FS_DELETE("FS-DEL", "Delete device item"),
+    FS_SEARCH("FS-SEARCH", "Search device storage"),
+    DUPLICATE_SCAN("DUP-SCAN", "Find exact duplicates"),
+    DUPLICATE_DELETE("DUP-DEL", "Delete verified duplicate files"),
+    LARGE_FILE_SCAN("LARGE-SCAN", "Scan for large files"),
+    SAF_SEARCH("SAF-SEARCH", "Search chosen folder"),
     CLEANUP_SCAN("CLN-SCAN", "Scan large downloads"),
     CLEANUP_DELETE("CLN-DEL", "Delete selected download"),
     STORAGE_READ("STO-READ", "Read storage information"),

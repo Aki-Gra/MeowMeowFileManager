@@ -4,7 +4,7 @@ A native Android file explorer built in Kotlin and Jetpack Compose.
 
 ## Screens
 
-- **Files:** Browse shared storage after explicit All files access approval, or use Android's folder picker as a scoped fallback. Browse Downloads directly, open files with other apps, sort, create folders, rename and delete after confirmation.
+- **Files:** Browse shared storage after explicit All files access approval, or use Android's folder picker as a scoped fallback. Browse Downloads directly, preview supported documents inside MeowMeow, sort, create folders, rename and delete after confirmation.
 - **Storage overview:** Shows used/available space for primary shared storage, a shortcut to Android's system storage settings, a Downloads shortcut and a link to Cleanup.
 - **Cleanup:** Scans Downloads for files **50 MiB or larger**, shows candidates with their sizes, and lets users select and confirm permanent deletion. Nothing is automatically deleted.
 
@@ -88,16 +88,63 @@ Duplicate names and invalid filenames during folder creation or renaming are **n
 
 The launcher now uses a custom MeowMeow cat-and-folder icon: a white smiling cat resting on a golden folder, with a purple paw print and purple background. The adaptive foreground is an Android vector drawable, not a bitmap, so it scales across device densities. Resources include adaptive launcher icons for Android 8+, a round icon alias, and a simplified Android 13+ monochrome resource for themed icons. No extra permission or app data changes are required.
 
-## In-app document reader (advanced feature branch)
+## v0.2 development branch — search and file-type filtering
 
-Files now open **inside MeowMeow by default**, without sending them to the browser, Google Drive or another reader. The dedicated, non-exported ReaderActivity supports:
+On `feat/file-tools-v0-2`, Files has a new **Search** icon. Search can filter by filename and file category, either in the current directory or recursively from the chosen storage root. Scans are read-only, run off the UI thread, can be cancelled, and are bounded to 2,000 folders / 20,000 items / 300 displayed results. Partial searches and unreadable folders are labelled. No file search history, index or file contents are stored. This feature is **pending real-device QA** and is **not merged into main**.
 
-- **PDF**: native on-device page rendering via Android PdfRenderer, next/previous page controls and zoom. Password-protected and some damaged PDFs may not open.
-- **TXT, JSON, XML, Markdown, CSV, TSV, YAML, LOG, HTML source and similar text files**: scrollable, selectable, read-only text viewer, font-size controls and UTF-8/UTF-16 BOM detection.
-- **DOCX and ODT**: text extraction from the local zipped XML document, not full Word formatting/images/layout.
-- **Legacy .DOC**: read-only text extraction using Apache POI HWPF (poi-scratchpad), not Word formatting/images/layout. Android-device validation is particularly important for .doc compatibility.
-- **Unsupported / corrupt files**: a safe in-app message, not an automatic chooser. Another app opens **only** after a deliberate **Open with…** tap.
+The full v0.2 scope and tests are in [docs/V0_2_FILE_TOOLS_PLAN.md](docs/V0_2_FILE_TOOLS_PLAN.md). Copy, bulk operations, duplicate detection and expanded large-file scanning remain planned; do not describe them as implemented.
 
-Document reading is offline with no network permission. Content is read on Dispatchers.IO and guarded with input/output limits. PDF pages render with bounded bitmap sizes, and temporary cache copies (required for some non-seekable document providers) are deleted after use. No file is modified in the reader. Reader errors use privacy-safe error logging codes without filenames or paths.
+### Explicit search locations
 
-**Reader limitations:** Word and ODT display extracted text only, not native page layout. Very large, encrypted, malformed, or unusual documents may be refused with an explanation. PDF text is page-rendered, not selectable/searchable in this initial release; other reader enhancements can follow QA.
+Search has three choices: **Current folder only**, **Current folder + subfolders**, and **Device storage root + subfolders** (labelled **Selected folder root + subfolders** when using the Android folder picker). The previous **Include subfolders** toggle has been removed because it misleadingly searched from the root rather than the current directory.
+
+
+## v0.2 milestone 2 — Copy (device QA pending)
+
+On the v0.2 feature branch, Files → item menu → **Copy** selects a file or folder. Navigate within Files and choose **Paste here**. Copies preserve the original source. If a destination name exists, MeowMeow now asks to **Keep both (rename copy)**, **Replace existing file** where safe, or **Skip**. Replacements on direct storage are explicitly confirmed, SHA-256 verified in a separate staged file, then atomically swapped; folder and SAF replacements are disabled for safety. An interrupted staging copy attempts to remove only what it created. Single files can cross direct/SAF access modes where permission allows; folder copy is restricted to the same storage mode and selected root. See [v0.2 plan](docs/V0_2_FILE_TOOLS_PLAN.md) for limits and QA steps. The updated conflict UX is pending real-device QA and is not yet merged into main.
+
+
+## v0.2 Milestone 3 — bulk operations (device QA pending)
+
+The Files checklist button enters multi-select mode for files and folders in the current folder. **Select all**, **Deselect all**, **Copy**, **Move**, and **Delete** are available, with an explicit confirmation/review step before processing. Copy/move choose a destination via the existing explorer; delete is permanent and warns about selected folder contents. Processing is sequential with success/skip/failure/remaining counts and cancellation. Moves delete originals only after a verified copy; unexpected partial results must be reviewed. All operations respect storage permissions and never silently overwrite. See [the milestone 3 QA checklist](docs/V0_2_FILE_TOOLS_PLAN.md).
+
+
+### Copy collision prompts (new build — pending phone verification)
+
+On **single Copy** and **Bulk Copy**, a duplicate filename opens a choice for **Keep both (rename copy)**, **Replace existing file** (only for direct storage regular files with atomic replacement), or **Skip this item**. Rename preserves extensions by default and can be edited. Replace is never automatic, and existing content remains intact if staging fails before the atomic commit. SAF providers and folder collisions support Rename/Skip only. Bulk Move still skips destination conflicts rather than overwriting originals. No personal file paths/names are recorded in the error log.
+
+
+## v0.2 Milestone 4 — File analysis (device QA pending)
+
+**Cleanup → Find duplicates and large files** provides two read-only scans: large files with a 10 / 50 / 100 / 500 / 1024 MiB minimum, and exact duplicates verified by size and streamed SHA-256. Both support current folder, current subtree, or selected storage root subtree, direct shared-storage or SAF-granted access, progress, cancel, and incomplete-result warnings. Every scan is limited to 2,000 folders, 20,000 entries, and 300 displayed matches; hashing has a 20 GiB budget. No files are automatically removed and no private paths/content/hashes are persisted or logged. Existing Downloads cleanup is unchanged. Device QA is required before merge.
+
+
+### Remove duplicates directly (device QA pending)
+
+Each exact-duplicate row now has **Delete**, and groups have checkboxes plus **Select all copies** and **Delete selected**. Both one-copy and all-copies deletion require explicit permanent confirmation, with a stronger warning when no copy will remain. Before removing each file, MeowMeow revalidates its size, identity, name and SHA-256 content against the scan. Changed files are skipped; completed deletions remain permanent. Results update and rescan is recommended. No deletion is performed merely by scanning.
+
+
+### Analysis screen scrolling on small phones (device QA pending)
+
+The Cleanup analysis page now scrolls as a **single list** from scan settings to results, rather than keeping a large non-scrolling header above a small independently scrolling results area. On completion it scrolls to the results summary. A top-bar settings shortcut returns to the scan controls, and confirmed duplicate-deletion progress stays visible at the bottom while scrolling.
+
+
+## Advanced document reader (v0.3 preview PR)
+
+This branch integrates the in-app reader with current v0.2 Files / Search / Analysis.
+File taps from both the device storage and SAF folder picker open a **MeowMeow-owned
+offline reading screen first**, not an external browser/reader. "Open with…" is
+available only as an explicit user action.
+
+- PDF: Android PdfRenderer displays pages with Next/Previous and zoom.
+- TXT, JSON, CSV, XML, Markdown, YAML, log files and similar text: scrollable,
+  selectable, read-only contents with font controls and BOM detection.
+- DOCX, ODT: local, bounded extraction of readable text. No pixel-perfect layout.
+- Legacy DOC: read-only text extraction via Apache POI HWPF; requires device QA.
+- Unsupported files: safe in-app explanation with optional external opening.
+- No network activity, auto-opening external apps or edits to source documents.
+- Bounded processing and private temporary caching limit parser and memory usage.
+
+The reader is integrated on a branch derived from merged v0.2 changes without
+overwriting basic-file tools. Verify it using [reader QA](docs/ADVANCED_READER_QA.md)
+and the existing v0.2 testing plan before merging PR #5.
