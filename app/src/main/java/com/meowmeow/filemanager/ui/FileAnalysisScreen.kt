@@ -14,12 +14,14 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.activity.compose.BackHandler
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.InsertDriveFile
 import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
@@ -36,10 +38,13 @@ import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -52,6 +57,7 @@ import com.meowmeow.filemanager.model.AnalysisKind
 import com.meowmeow.filemanager.model.FileEntry
 import com.meowmeow.filemanager.model.SearchScope
 import com.meowmeow.filemanager.model.humanSize
+import kotlinx.coroutines.launch
 
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
@@ -87,6 +93,13 @@ fun FileAnalysisScreen(
     val showingCurrent = state.complete && state.kind == mode &&
         state.scope == scope && (mode != AnalysisKind.LARGE || state.thresholdMiB == threshold)
 
+    val listState = rememberLazyListState()
+    val scrollScope = rememberCoroutineScope()
+    // New scans open at the results; settings remain one scroll away.
+    LaunchedEffect(showingCurrent) {
+        if (showingCurrent) listState.animateScrollToItem(1)
+    }
+
     BackHandler { if (!state.isDeleting) onBack() }
     // Switching to another tab also cancels a live scan.
     DisposableEffect(Unit) {
@@ -103,10 +116,18 @@ fun FileAnalysisScreen(
             }
         )
     }) { padding ->
-        Column(
-            Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp),
+        LazyColumn(
+            state = listState,
+            modifier = Modifier.fillMaxSize().padding(padding),
+            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 32.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
+            item(key = "analysis_controls") {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+
             Text("Storage analysis", style = MaterialTheme.typography.titleMedium)
             Text("Scans are read-only. Duplicate files can be deleted after confirmation.",
                 style = MaterialTheme.typography.bodySmall)
@@ -204,6 +225,15 @@ fun FileAnalysisScreen(
                 Text(it, color = MaterialTheme.colorScheme.error,
                     style = MaterialTheme.typography.bodySmall)
             }
+
+                }
+            }
+            if (showingCurrent) {
+                item(key = "analysis_summary") {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
             if (showingCurrent) {
                 if (state.truncated || state.unreadable > 0) {
                     Text(
@@ -237,10 +267,11 @@ fun FileAnalysisScreen(
                     style = MaterialTheme.typography.bodySmall
                 )
             }
-            LazyColumn(
-                modifier = Modifier.weight(1f),
-                contentPadding = PaddingValues(bottom = 32.dp)
-            ) {
+
+                    }
+                }
+            }
+
                 if (showingCurrent && state.kind == AnalysisKind.LARGE) {
                     items(state.large, key = { it.entry.id }) { hit ->
                         AnalysisFileRow(hit, onOpenFile)
@@ -325,7 +356,7 @@ fun FileAnalysisScreen(
                             modifier = Modifier.padding(16.dp))
                     }
                 }
-            }
+
         }
     }
 
