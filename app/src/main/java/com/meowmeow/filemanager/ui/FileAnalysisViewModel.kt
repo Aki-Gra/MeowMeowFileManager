@@ -26,6 +26,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -73,7 +74,8 @@ private data class PreparedAnalysis(
 
 class FileAnalysisViewModel(
     private val ops: AndroidCopyOperations,
-    private val errors: ErrorLogStore
+    private val errors: ErrorLogStore,
+    private val taskCenter: TaskCenterViewModel
 ) : ViewModel() {
     private val _state = MutableStateFlow(FileAnalysisUiState())
     val state: StateFlow<FileAnalysisUiState> = _state
@@ -113,7 +115,8 @@ class FileAnalysisViewModel(
             )
             return
         }
-        job = viewModelScope.launch {
+        var taskToken = -1L
+        val scanTask = viewModelScope.launch(start = CoroutineStart.LAZY) {
             _state.value = FileAnalysisUiState(
                 isRunning = true, kind = kind, scope = scope, thresholdMiB = minimumMiB
             )
@@ -131,6 +134,7 @@ class FileAnalysisViewModel(
                                     itemsVisited = entries,
                                     hashedFiles = hashed
                                 )
+                                taskCenter.progress(taskToken, folders, entries, hashed)
                             }
                         }
                     )
@@ -223,6 +227,23 @@ class FileAnalysisViewModel(
                 if (generation == scanGeneration) job = null
             }
         }
+        job = scanTask
+        val token = taskCenter.begin(
+            if (kind == AnalysisKind.DUPLICATES) BackgroundTaskKind.DUPLICATE_SCAN
+            else BackgroundTaskKind.LARGE_FILE_SCAN,
+            copyTaskScope(root),
+            cancel = { scanTask.cancel() }
+        )
+        taskToken = token
+        scanTask.invokeOnCompletion { cause ->
+            taskCenter.complete(
+                token,
+                success = cause == null && _state.value.complete &&
+                    _state.value.kind == kind,
+                wasCancelled = cause is CancellationException || scanTask.isCancelled
+            )
+        }
+        scanTask.start()
     }
 
     fun toggleDuplicate(id: String) {
@@ -368,13 +389,13 @@ class FileAnalysisViewModel(
         )
     }
 
-    class Factory(context: Context): ViewModelProvider.Factory {
+    class Factory(context: Context, private val taskCenter: TaskCenterViewModel): ViewModelProvider.Factory {
         private val app = context.applicationContext
         @Suppress("UNCHECKED_CAST")
         override fun <T: ViewModel> create(modelClass: Class<T>): T {
             require(modelClass.isAssignableFrom(FileAnalysisViewModel::class.java))
             return FileAnalysisViewModel(
-                AndroidCopyOperations(app), (app as MeowMeowApp).errorLog
+                AndroidCopyOperations(app), (app as MeowMeowApp).errorLog, taskCenter
             ) as T
         }
     }
