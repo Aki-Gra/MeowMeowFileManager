@@ -97,8 +97,10 @@ fun TaskCenterOverlay(
                                     style = MaterialTheme.typography.bodySmall
                                 )
                                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    TextButton(onClick = { expanded = false; onOpen(task.kind) }) {
-                                        Text("Open")
+                                    if (state.canOpen(task)) {
+                                        TextButton(onClick = { expanded = false; onOpen(task.kind) }) {
+                                            Text("Open")
+                                        }
                                     }
                                     if (task.status == BackgroundTaskStatus.RUNNING) {
                                         TextButton(onClick = { onStop(task.id) }) { Text("Stop") }

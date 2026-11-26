@@ -16,6 +16,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -99,17 +101,20 @@ class CleanupViewModel(
     fun deleteSelected() {
         val items = _state.value.selected
         if (items.isEmpty() || _state.value.isLoading) return
+        if (!taskCenter.allowMutation("Delete Downloads files", listOf(downloadsScope))) return
         task?.cancel()
         _state.value = _state.value.copy(isLoading = true, message = null)
+        var deletedCount = 0
+        var allSucceeded = false
         val deleteTask = viewModelScope.launch(start = CoroutineStart.LAZY) {
             try {
             val (successes, failed) = withContext(Dispatchers.IO) {
                 val failureMessages = mutableListOf<String>()
-                var deleted = 0
                 items.forEach {
+                    currentCoroutineContext().ensureActive()
                     try {
                         repository.deleteDownload(it)
-                        deleted++
+                        deletedCount++
                     } catch (cancelled: kotlinx.coroutines.CancellationException) {
                         throw cancelled
                     } catch (error: Exception) {
@@ -117,12 +122,13 @@ class CleanupViewModel(
                         failureMessages.add(error.message ?: "Could not delete file.")
                     }
                 }
-                deleted to failureMessages
+                deletedCount to failureMessages
             }
             val result = resultUnlessCancelled {
                 withContext(Dispatchers.IO) { repository.scanLargeDownloads() }
             }
             result.onSuccess { (remaining, truncated) ->
+                allSucceeded = failed.isEmpty()
                 val summary = if (failed.isEmpty()) {
                     "Deleted " + successes + " file(s)."
                 } else {
@@ -140,7 +146,7 @@ class CleanupViewModel(
             }
             } catch (cancelled: CancellationException) {
                 _state.value = CleanupUiState(
-                    message = "Cleanup stopped. Completed deletions remain. Scan again to refresh."
+                    message = "Cleanup stopped. $deletedCount file(s) deleted. Scan again to refresh."
                 )
                 throw cancelled
             }
@@ -152,7 +158,7 @@ class CleanupViewModel(
         )
         deleteTask.invokeOnCompletion { cause ->
             taskCenter.complete(
-                token, success = cause == null && _state.value.scanned,
+                token, success = cause == null && allSucceeded,
                 wasCancelled = cause is CancellationException || deleteTask.isCancelled
             )
         }

@@ -13,7 +13,7 @@ import kotlinx.coroutines.flow.StateFlow
 
 enum class BackgroundTaskKind {
     DEVICE_SEARCH, FOLDER_SEARCH, DUPLICATE_SCAN, LARGE_FILE_SCAN,
-    FILE_COPY, BULK_OPERATION, DUPLICATE_DELETE, DOWNLOADS_SCAN, DOWNLOADS_DELETE
+    FILE_COPY, BULK_OPERATION, DUPLICATE_DELETE, DOWNLOADS_SCAN, DOWNLOADS_DELETE, FILE_MUTATION
 }
 enum class BackgroundTaskStatus { RUNNING, STOPPING, COMPLETED, STOPPED, FAILED, OUTDATED }
 
@@ -39,17 +39,27 @@ data class TaskConflict(
     val description: String
 )
 
+private fun BackgroundTaskKind.resultSlot(): BackgroundTaskKind = when (this) {
+    BackgroundTaskKind.LARGE_FILE_SCAN, BackgroundTaskKind.DUPLICATE_DELETE -> BackgroundTaskKind.DUPLICATE_SCAN
+    BackgroundTaskKind.DOWNLOADS_DELETE -> BackgroundTaskKind.DOWNLOADS_SCAN
+    else -> this
+}
+
 data class TaskCenterState(
     val tasks: List<BackgroundTask> = emptyList(),
     val conflict: TaskConflict? = null,
     val notice: String? = null,
-    val dismissedOutdatedKinds: Set<BackgroundTaskKind> = emptySet()
+    val latestResults: Map<BackgroundTaskKind, BackgroundTask> = emptyMap(),
+    val latestOpenIds: Map<BackgroundTaskKind, Long> = emptyMap()
 ) {
     val runningCount: Int get() = tasks.count { it.active }
 
     fun latestOutdated(vararg kinds: BackgroundTaskKind): Boolean =
-        kinds.any { it in dismissedOutdatedKinds } ||
-            tasks.lastOrNull { it.kind in kinds }?.status == BackgroundTaskStatus.OUTDATED
+        kinds.any { latestResults[it.resultSlot()]?.status == BackgroundTaskStatus.OUTDATED }
+
+    fun canOpen(task: BackgroundTask): Boolean =
+        task.kind != BackgroundTaskKind.FILE_MUTATION &&
+            latestOpenIds[task.kind.resultSlot()] == task.id
 }
 
 /** Tasks outlive individual tabs but not the Android app process. */
@@ -68,13 +78,19 @@ class TaskCenterViewModel : ViewModel() {
     ): Long {
         val id = ++sequence
         cancellation[id] = cancel
-        val previous = _state.value.tasks
-        _state.value = _state.value.copy(
-            dismissedOutdatedKinds = _state.value.dismissedOutdatedKinds - kind,
-            tasks = (previous + BackgroundTask(
-                id, kind, scope, title(kind), BackgroundTaskStatus.RUNNING,
-                affectedScopes = affectedScopes, readOnly = readOnly
-            )).takeLast(20),
+        val previous = _state.value
+        val task = BackgroundTask(
+            id, kind, scope, title(kind), BackgroundTaskStatus.RUNNING,
+            affectedScopes = affectedScopes, readOnly = readOnly
+        )
+        val slot = kind.resultSlot()
+        val all = previous.tasks + task
+        val retained = all.filter { it.active } + all.filterNot { it.active }.takeLast(20)
+        _state.value = previous.copy(
+            tasks = retained.sortedBy { it.id },
+            latestResults = if (readOnly) previous.latestResults + (slot to task)
+                else previous.latestResults,
+            latestOpenIds = previous.latestOpenIds + (slot to id),
             notice = null
         )
         return id
@@ -91,15 +107,20 @@ class TaskCenterViewModel : ViewModel() {
     @Synchronized
     fun complete(id: Long, success: Boolean, wasCancelled: Boolean) {
         cancellation.remove(id)
-        _state.value = _state.value.copy(tasks = _state.value.tasks.map {
-            if (it.id != id) it
-            else it.copy(status = when {
-                wasCancelled || it.status == BackgroundTaskStatus.STOPPING ->
+        val previous = _state.value
+        fun finish(task: BackgroundTask): BackgroundTask = if (task.id != id) task
+            else task.copy(status = when {
+                wasCancelled || task.status == BackgroundTaskStatus.STOPPING ->
                     BackgroundTaskStatus.STOPPED
                 success -> BackgroundTaskStatus.COMPLETED
                 else -> BackgroundTaskStatus.FAILED
             })
-        })
+        val updated = previous.tasks.map(::finish)
+        _state.value = previous.copy(
+            tasks = (updated.filter { it.active } +
+                updated.filterNot { it.active }.takeLast(20)).sortedBy { it.id },
+            latestResults = previous.latestResults.mapValues { (_, task) -> finish(task) }
+        )
     }
 
     /** Never queues or retries the requested mutation. */
@@ -118,6 +139,22 @@ class TaskCenterViewModel : ViewModel() {
                     "Storage access may change while tasks are reading files."
                 else "An active task may be using files affected by this action.")
         )
+        return false
+    }
+
+    /** A copy reads sources and writes the destination. Existing readers may share sources. */
+    @Synchronized
+    fun allowCopy(action: String, sources: List<TaskScope>, destination: TaskScope): Boolean {
+        val blocking = _state.value.tasks.filter { task ->
+            task.active && task.affectedScopes.any { active ->
+                scopesMayOverlap(active, destination) ||
+                    (!task.readOnly && sources.any { scopesMayOverlap(active, it) })
+            }
+        }
+        if (blocking.isEmpty()) return true
+        _state.value = _state.value.copy(conflict = TaskConflict(
+            action, blocking.map { it.id }, "An active task may be using the copy source or destination."
+        ))
         return false
     }
 
@@ -169,7 +206,8 @@ class TaskCenterViewModel : ViewModel() {
     /** Mark completed results outdated only for files actually affected. */
     @Synchronized
     fun noteChanged(locations: List<TaskScope>?) {
-        _state.value = _state.value.copy(tasks = _state.value.tasks.map { task ->
+        val previous = _state.value
+        fun invalidate(task: BackgroundTask): BackgroundTask =
             if (task.readOnly && (task.status == BackgroundTaskStatus.COMPLETED ||
                 task.status == BackgroundTaskStatus.OUTDATED) &&
                 (locations.isNullOrEmpty() || locations.any {
@@ -177,7 +215,10 @@ class TaskCenterViewModel : ViewModel() {
                 })
             ) task.copy(status = BackgroundTaskStatus.OUTDATED)
             else task
-        })
+        _state.value = previous.copy(
+            tasks = previous.tasks.map(::invalidate),
+            latestResults = previous.latestResults.mapValues { (_, task) -> invalidate(task) }
+        )
     }
 
     @Synchronized
@@ -185,10 +226,7 @@ class TaskCenterViewModel : ViewModel() {
         val item = _state.value.tasks.firstOrNull { it.id == id } ?: return
         if (item.active) return
         _state.value = _state.value.copy(
-            tasks = _state.value.tasks.filter { it.id != id },
-            dismissedOutdatedKinds = if (item.status == BackgroundTaskStatus.OUTDATED)
-                _state.value.dismissedOutdatedKinds + item.kind
-                else _state.value.dismissedOutdatedKinds
+            tasks = _state.value.tasks.filter { it.id != id }
         )
     }
 
@@ -247,6 +285,7 @@ class TaskCenterViewModel : ViewModel() {
         BackgroundTaskKind.DUPLICATE_DELETE -> "Delete duplicates"
         BackgroundTaskKind.DOWNLOADS_SCAN -> "Downloads scan"
         BackgroundTaskKind.DOWNLOADS_DELETE -> "Downloads cleanup"
+        BackgroundTaskKind.FILE_MUTATION -> "File change"
     }
 }
 

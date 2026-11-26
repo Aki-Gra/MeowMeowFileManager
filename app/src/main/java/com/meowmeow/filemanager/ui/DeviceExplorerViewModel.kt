@@ -88,28 +88,53 @@ class DeviceExplorerViewModel(
         )
     }
 
-    fun createFolder(name: String) = mutate(ErrorOperation.FS_CREATE) {
-        repository.createFolder(current(), name)
-    }
-    fun rename(entry: FileEntry, newName: String) = mutate(ErrorOperation.FS_RENAME) {
-        repository.rename(repository.fromEntry(entry), newName)
-    }
-    fun delete(entry: FileEntry) = mutate(ErrorOperation.FS_DELETE) {
-        repository.delete(repository.fromEntry(entry))
+    fun createFolder(name: String) {
+        val folder = folders.lastOrNull() ?: return
+        mutate("Create folder", ErrorOperation.FS_CREATE, deviceTaskScope(folder)) {
+            repository.createFolder(folder, name)
+        }
     }
 
-    private fun mutate(operation: ErrorOperation, block: () -> Unit) {
-        viewModelScope.launch {
+    fun rename(entry: FileEntry, newName: String) {
+        val target = runCatching { repository.fromEntry(entry) }.getOrNull() ?: return
+        // Both the old and new name are protected by locking their parent.
+        val parent = target.parentFile ?: return
+        mutate("Rename item", ErrorOperation.FS_RENAME, deviceTaskScope(parent)) {
+            repository.rename(target, newName)
+        }
+    }
+
+    fun delete(entry: FileEntry) {
+        val target = runCatching { repository.fromEntry(entry) }.getOrNull() ?: return
+        mutate("Delete item", ErrorOperation.FS_DELETE, deviceTaskScope(target)) {
+            repository.delete(target)
+        }
+    }
+
+    private fun mutate(action: String, operation: ErrorOperation,
+        scope: com.meowmeow.filemanager.model.TaskScope, block: () -> Unit) {
+        val locations = listOf(scope)
+        if (!taskCenter.allowMutation(action, locations)) return
+        var succeeded = false
+        val mutation = viewModelScope.launch(start = CoroutineStart.LAZY) {
             val result = resultUnlessCancelled { withContext(Dispatchers.IO) { block() } }
-            if (result.isSuccess) loadFolder()
-            else {
+            if (result.isSuccess) {
+                succeeded = true
+                loadFolder()
+            } else {
                 val failure = result.exceptionOrNull()!!
                 errorLog.record(ErrorArea.DEVICE_FILE_OPERATION, failure, operation = operation)
-                _state.value = _state.value.copy(
-                    errorMessage = failure.message ?: "Operation failed."
-                )
+                _state.value = _state.value.copy(errorMessage = failure.message ?: "Operation failed.")
             }
         }
+        val token = taskCenter.begin(BackgroundTaskKind.FILE_MUTATION, scope,
+            readOnly = false, cancel = { mutation.cancel() })
+        mutation.invokeOnCompletion { cause ->
+            // A provider may have committed the change before returning or failing.
+            taskCenter.noteChanged(locations)
+            taskCenter.complete(token, succeeded, cause is CancellationException || mutation.isCancelled)
+        }
+        mutation.start()
     }
 
     private fun current(): File = folders.lastOrNull() ?: error("No folder is open.")

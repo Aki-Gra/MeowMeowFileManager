@@ -190,6 +190,13 @@ class BulkViewModel(
         if (sources.isEmpty()) return
         val target = destination
         if (action != BulkAction.DELETE && target == null) return
+        val sourceScopes = chosen.values.map { copyTaskScope(it.first) }
+        val allowed = if (action == BulkAction.COPY) {
+            taskCenter.allowCopy("Bulk copy", sourceScopes, copyTaskScope(target))
+        } else {
+            taskCenter.allowMutation("Bulk file operation", mutationPlaces().map(::copyTaskScope))
+        }
+        if (!allowed) return
         var taskToken = -1L
         _state.value = _state.value.copy(
             stage = BulkStage.RUNNING, progress = BulkProgress(total = sources.size),

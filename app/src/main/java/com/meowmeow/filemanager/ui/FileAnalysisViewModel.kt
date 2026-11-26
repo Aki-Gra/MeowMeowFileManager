@@ -44,6 +44,7 @@ data class DuplicateGroupResult(
 data class FileAnalysisUiState(
     val isRunning: Boolean = false,
     val complete: Boolean = false,
+    val scanOrigin: String? = null,
     val kind: AnalysisKind = AnalysisKind.LARGE,
     val thresholdMiB: Int = 50,
     val scope: SearchScope = SearchScope.CURRENT_FOLDER,
@@ -102,7 +103,7 @@ class FileAnalysisViewModel(
         _state.value = FileAnalysisUiState(notice = "Scan cancelled. No changes were made.")
     }
 
-    fun scan(root: CopyPlace?, kind: AnalysisKind, scope: SearchScope, minimumMiB: Int) {
+    fun scan(root: CopyPlace?, kind: AnalysisKind, scope: SearchScope, minimumMiB: Int, origin: String) {
         if (_state.value.isDeleting) return
         if (root != null && !taskCenter.allowScan("Start file analysis", copyTaskScope(root))) return
         verifiedTargets.clear()
@@ -119,7 +120,8 @@ class FileAnalysisViewModel(
         var taskToken = -1L
         val scanTask = viewModelScope.launch(start = CoroutineStart.LAZY) {
             _state.value = FileAnalysisUiState(
-                isRunning = true, kind = kind, scope = scope, thresholdMiB = minimumMiB
+                isRunning = true, kind = kind, scope = scope, thresholdMiB = minimumMiB,
+                scanOrigin = origin
             )
             try {
                 val prepared = withContext(Dispatchers.IO) {
@@ -200,6 +202,7 @@ class FileAnalysisViewModel(
                 val result = prepared.outcome
                 _state.value = FileAnalysisUiState(
                     complete = true,
+                    scanOrigin = origin,
                     kind = kind,
                     thresholdMiB = minimumMiB,
                     scope = scope,

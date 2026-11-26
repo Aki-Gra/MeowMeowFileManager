@@ -85,6 +85,8 @@ class CopyViewModel(
             _state.value = _state.value.copy(notice = "Open a writable folder first.")
             return
         }
+        if (!taskCenter.allowCopy("Copy files", listOf(copyTaskScope(source)),
+                copyTaskScope(destination))) return
         // Mark the operation as started before dispatching the coroutine, so
         // rapid double-taps cannot start two copies of the same item.
         _state.value = _state.value.copy(
@@ -154,6 +156,7 @@ class CopyViewModel(
             readOnly = false, cancel = { copyTask.cancel() }
         )
         copyTask.invokeOnCompletion { cause ->
+            taskCenter.noteChanged(listOf(copyTaskScope(destination)))
             taskCenter.complete(
                 token, success = cause == null && selected == null,
                 wasCancelled = cause is CancellationException || copyTask.isCancelled

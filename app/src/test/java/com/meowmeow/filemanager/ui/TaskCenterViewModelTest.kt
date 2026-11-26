@@ -148,4 +148,56 @@ class TaskCenterViewModelTest {
         assertEquals(0, tasks.state.value.runningCount)
         assertTrue(tasks.state.value.notice?.contains("permission") == true)
     }
+
+    @Test fun copyCannotReadAnActiveWritersSource() {
+        val tasks = TaskCenterViewModel()
+        val writer = tasks.begin(BackgroundTaskKind.FILE_MUTATION, downloads, readOnly = false) {}
+        assertFalse(tasks.allowCopy("Copy", listOf(downloads), pictures))
+        assertFalse(tasks.allowScan("Search", downloads))
+        tasks.complete(writer, true, false)
+        assertTrue(tasks.allowCopy("Copy", listOf(downloads), pictures))
+        tasks.begin(BackgroundTaskKind.DEVICE_SEARCH, downloads) {}
+        assertTrue(tasks.allowCopy("Copy", listOf(downloads), pictures))
+    }
+
+    @Test fun dismissingCompletedResultRetainsItsScopeForLaterInvalidation() {
+        val tasks = TaskCenterViewModel()
+        val scan = tasks.begin(BackgroundTaskKind.DEVICE_SEARCH, downloads) {}
+        tasks.complete(scan, true, false)
+        tasks.dismiss(scan)
+        tasks.noteChanged(listOf(pictures))
+        assertFalse(tasks.state.value.latestOutdated(BackgroundTaskKind.DEVICE_SEARCH))
+        tasks.noteChanged(listOf(downloads))
+        assertTrue(tasks.state.value.latestOutdated(BackgroundTaskKind.DEVICE_SEARCH))
+    }
+
+    @Test fun activeAndStoppingTasksSurviveHistoryLimit() {
+        val tasks = TaskCenterViewModel()
+        val active = tasks.begin(BackgroundTaskKind.FILE_MUTATION, downloads, readOnly = false) {}
+        tasks.stop(active)
+        repeat(30) {
+            val id = tasks.begin(BackgroundTaskKind.LARGE_FILE_SCAN, pictures) {}
+            tasks.complete(id, true, false)
+        }
+        assertEquals(21, tasks.state.value.tasks.size)
+        assertFalse(tasks.allowScan("Search", downloads))
+        assertTrue(tasks.state.value.tasks.any { it.id == active && it.active })
+        tasks.complete(active, false, true)
+        assertTrue(tasks.allowScan("Search", downloads))
+    }
+
+    @Test fun onlyLatestAnalysisTaskCanOpenSharedResults() {
+        val tasks = TaskCenterViewModel()
+        val first = tasks.begin(BackgroundTaskKind.DUPLICATE_SCAN, downloads) {}
+        tasks.complete(first, true, false)
+        val second = tasks.begin(BackgroundTaskKind.LARGE_FILE_SCAN, pictures) {}
+        tasks.complete(second, true, false)
+        assertFalse(tasks.state.value.canOpen(tasks.state.value.tasks.first { it.id == first }))
+        assertTrue(tasks.state.value.canOpen(tasks.state.value.tasks.first { it.id == second }))
+        tasks.noteChanged(listOf(downloads))
+        assertFalse(tasks.state.value.latestOutdated(BackgroundTaskKind.DUPLICATE_SCAN, BackgroundTaskKind.LARGE_FILE_SCAN))
+        tasks.dismiss(second)
+        tasks.noteChanged(listOf(pictures))
+        assertTrue(tasks.state.value.latestOutdated(BackgroundTaskKind.DUPLICATE_SCAN, BackgroundTaskKind.LARGE_FILE_SCAN))
+    }
 }

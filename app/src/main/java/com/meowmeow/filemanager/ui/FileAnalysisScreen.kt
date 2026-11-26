@@ -100,7 +100,7 @@ fun FileAnalysisScreen(
     }
 
     BackHandler { if (!state.isDeleting) onBack() }
-    // Switching to another tab also cancels a live scan.
+    // Leaving cancels only the pending delete confirmation, not a running scan.
     DisposableEffect(Unit) {
         onDispose { onLeave() }
     }
@@ -240,6 +240,11 @@ fun FileAnalysisScreen(
             state.deleteNotice?.let {
                 Text(it, style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error)
+            }
+            if (state.isRunning || showingCurrent || state.isDeleting) {
+                state.scanOrigin?.let { origin ->
+                    Text("Scan location: $origin", style = MaterialTheme.typography.bodyMedium)
+                }
             }
             if (outdatedResults) {
                 Text("Files changed since this scan. Results may be outdated. Scan again.",

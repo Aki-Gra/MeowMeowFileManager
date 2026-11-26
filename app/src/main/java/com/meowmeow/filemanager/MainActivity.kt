@@ -261,34 +261,13 @@ class MainActivity : ComponentActivity() {
                                     if (usingDevice) device.setSortMode(mode) else scoped.setSortMode(mode)
                                 },
                                 onCreateFolder = { name ->
-                                    val target = if (usingDevice) device.copyDestination()
-                                        else scoped.copyDestination()
-                                    val locations = listOf(copyTaskScope(target))
-                                    if (taskCenter.allowMutation("Create folder", locations)) {
-                                        if (usingDevice) device.createFolder(name)
-                                        else scoped.createFolder(name)
-                                        taskCenter.noteChanged(locations)
-                                    }
+                                    if (usingDevice) device.createFolder(name) else scoped.createFolder(name)
                                 },
                                 onRename = { entry, name ->
-                                    val target = if (usingDevice) device.copySelection(entry)
-                                        else scoped.copySelection(entry)
-                                    val locations = listOf(copyTaskScope(target))
-                                    if (taskCenter.allowMutation("Rename item", locations)) {
-                                        if (usingDevice) device.rename(entry, name)
-                                        else scoped.rename(entry, name)
-                                        taskCenter.noteChanged(locations)
-                                    }
+                                    if (usingDevice) device.rename(entry, name) else scoped.rename(entry, name)
                                 },
                                 onDelete = { entry ->
-                                    val target = if (usingDevice) device.copySelection(entry)
-                                        else scoped.copySelection(entry)
-                                    val locations = listOf(copyTaskScope(target))
-                                    if (taskCenter.allowMutation("Delete item", locations)) {
-                                        if (usingDevice) device.delete(entry)
-                                        else scoped.delete(entry)
-                                        taskCenter.noteChanged(locations)
-                                    }
+                                    if (usingDevice) device.delete(entry) else scoped.delete(entry)
                                 },
                                 onCopy = { entry ->
                                     copy.select(
@@ -425,7 +404,10 @@ class MainActivity : ComponentActivity() {
                                 onStart = { kind, scope, minimumMiB ->
                                     val folder = if (usingDevice) device.analysisFolder(scope)
                                         else scoped.analysisFolder(scope)
-                                    analysis.scan(folder, kind, scope, minimumMiB)
+                                    val path = if (usingDevice) deviceState.path else scopedState.path
+                                    val origin = (if (scope == com.meowmeow.filemanager.model.SearchScope.ROOT_AND_SUBFOLDERS)
+                                        path.take(1) else path).joinToString(" / ")
+                                    analysis.scan(folder, kind, scope, minimumMiB, origin)
                                 },
                                 onCancel = analysis::cancel,
                                 onOpenFile = ::openFile,
@@ -454,7 +436,10 @@ class MainActivity : ComponentActivity() {
                                 onOpenAnalysis = { page = Page.ANALYSIS },
                                 hasFullAccess = allFilesGranted,
                                 supportsFullAccess = supported,
-                                onGrantAccess = ::requestAllFilesAccess,
+                                onGrantAccess = {
+                                    if (taskCenter.allowMutation("Change storage permission", null))
+                                        requestAllFilesAccess()
+                                },
                                 onScan = cleanup::scan,
                                 onToggle = cleanup::toggleSelected,
                                 onDelete = {
@@ -487,7 +472,8 @@ class MainActivity : ComponentActivity() {
                                     BackgroundTaskKind.LARGE_FILE_SCAN,
                                     BackgroundTaskKind.DUPLICATE_DELETE -> Page.ANALYSIS
                                     BackgroundTaskKind.FILE_COPY,
-                                    BackgroundTaskKind.BULK_OPERATION -> Page.FILES
+                                    BackgroundTaskKind.BULK_OPERATION,
+                                    BackgroundTaskKind.FILE_MUTATION -> Page.FILES
                                     BackgroundTaskKind.DOWNLOADS_SCAN,
                                     BackgroundTaskKind.DOWNLOADS_DELETE -> Page.CLEANUP
                                 }
