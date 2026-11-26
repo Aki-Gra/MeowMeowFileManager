@@ -43,6 +43,16 @@ class LocalFileRepository {
         return canonical
     }
 
+    /** Used by copy to revalidate every source/destination before I/O. */
+    fun checkedForCopy(file: File): File {
+        val approved = checked(file)
+        check(file.absoluteFile == approved &&
+            !java.nio.file.Files.isSymbolicLink(file.toPath())) {
+            "Copy cannot follow symbolic links or protected paths."
+        }
+        return approved
+    }
+
     fun fromEntry(entry: FileEntry): File {
         val uri = Uri.parse(entry.id)
         require(uri.scheme == "file") { "Not a local device file." }

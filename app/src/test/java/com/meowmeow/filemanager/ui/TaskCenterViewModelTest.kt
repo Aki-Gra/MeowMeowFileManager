@@ -1,0 +1,203 @@
+package com.meowmeow.filemanager.ui
+
+import com.meowmeow.filemanager.model.TaskScope
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class TaskCenterViewModelTest {
+    private val downloads = TaskScope.Device("/storage/emulated/0/Download")
+    private val pictures = TaskScope.Device("/storage/emulated/0/Pictures")
+
+    @Test fun readOnlyTaskSurvivesUnrelatedMutations() {
+        val tasks = TaskCenterViewModel()
+        val id = tasks.begin(BackgroundTaskKind.DUPLICATE_SCAN, downloads) {}
+        tasks.progress(id, 4, 250, 80)
+        assertTrue(tasks.allowMutation("Delete an unrelated picture", listOf(pictures)))
+        assertEquals(1, tasks.state.value.runningCount)
+        assertEquals(250, tasks.state.value.tasks.single().files)
+    }
+
+    @Test fun conflictNeverQueuesOrAutomaticallyExecutesMutation() {
+        val tasks = TaskCenterViewModel()
+        var cancellationRequests = 0
+        val id = tasks.begin(BackgroundTaskKind.DUPLICATE_SCAN, downloads) {
+            cancellationRequests++
+        }
+        assertFalse(tasks.allowMutation(
+            "Delete Downloads", listOf(TaskScope.Device("/storage/emulated/0/Download/folder"))
+        ))
+        assertEquals(1, tasks.state.value.conflict?.conflictingTaskIds?.size)
+        tasks.stopConflictingTasks()
+        assertEquals(1, cancellationRequests)
+        assertNull(tasks.state.value.conflict)
+        assertEquals(BackgroundTaskStatus.STOPPING, tasks.state.value.tasks.single().status)
+        // Job has not finished releasing handles. No mutation can yet proceed.
+        assertFalse(tasks.allowMutation("Delete Downloads", listOf(downloads)))
+        tasks.keepCurrentTasks()
+        tasks.complete(id, success = false, wasCancelled = true)
+        assertEquals(BackgroundTaskStatus.STOPPED, tasks.state.value.tasks.single().status)
+        // Caller must explicitly ask again; manager stores no new-action callback.
+        assertTrue(tasks.allowMutation("Delete Downloads", listOf(downloads)))
+    }
+
+    @Test fun keepingExistingTaskDiscardsOnlyNewRequest() {
+        val tasks = TaskCenterViewModel()
+        var stopped = false
+        tasks.begin(BackgroundTaskKind.DEVICE_SEARCH, downloads) { stopped = true }
+        assertFalse(tasks.allowMutation("Rename folder", listOf(downloads)))
+        tasks.keepCurrentTasks()
+        assertNull(tasks.state.value.conflict)
+        assertFalse(stopped)
+        assertEquals(1, tasks.state.value.runningCount)
+    }
+
+    @Test fun unknownAndPermissionChangesAlwaysWarn() {
+        val tasks = TaskCenterViewModel()
+        tasks.begin(BackgroundTaskKind.FOLDER_SEARCH, TaskScope.Saf("documents", "opaque")) {}
+        assertFalse(tasks.allowMutation("Change permissions", null))
+        tasks.keepCurrentTasks()
+        assertFalse(tasks.allowMutation("Delete unknown file", listOf(TaskScope.Unknown)))
+    }
+
+    @Test fun changedCompletedTaskBecomesOutdatedWithoutRescanning() {
+        val tasks = TaskCenterViewModel()
+        val id = tasks.begin(BackgroundTaskKind.DEVICE_SEARCH, downloads) {}
+        tasks.complete(id, success = true, wasCancelled = false)
+        tasks.noteChanged(listOf(pictures))
+        assertEquals(BackgroundTaskStatus.COMPLETED, tasks.state.value.tasks.single().status)
+        tasks.noteChanged(listOf(TaskScope.Device("/storage/emulated/0/Download/test.txt")))
+        assertTrue(tasks.state.value.latestOutdated(BackgroundTaskKind.DEVICE_SEARCH))
+        assertEquals(BackgroundTaskStatus.OUTDATED, tasks.state.value.tasks.single().status)
+    }
+
+    @Test fun externallyRevokedSafGrantStopsOnlyAffectedTasks() {
+        val tasks = TaskCenterViewModel()
+        var stoppedSaf = false
+        var stoppedDevice = false
+        val saf = tasks.begin(
+            BackgroundTaskKind.FOLDER_SEARCH, TaskScope.Saf("documents", "tree-1")
+        ) { stoppedSaf = true }
+        tasks.begin(BackgroundTaskKind.DEVICE_SEARCH, downloads) {
+            stoppedDevice = true
+        }
+        tasks.reconcileSafPermissions(emptySet())
+        assertTrue(stoppedSaf)
+        assertFalse(stoppedDevice)
+        assertEquals(BackgroundTaskStatus.STOPPING,
+            tasks.state.value.tasks.first { it.id == saf }.status)
+        assertTrue(tasks.state.value.notice?.contains("revoked") == true)
+    }
+
+    @Test fun persistedSafGrantKeepsSearchRunning() {
+        val tasks = TaskCenterViewModel()
+        var stopped = false
+        tasks.begin(BackgroundTaskKind.FOLDER_SEARCH,
+            TaskScope.Saf("documents", "tree-1")) { stopped = true }
+        tasks.reconcileSafPermissions(setOf("documents" to "tree-1"))
+        assertFalse(stopped)
+        assertEquals(1, tasks.state.value.runningCount)
+    }
+
+    @Test fun activeCopyProtectsBothItsSourceAndDestination() {
+        val tasks = TaskCenterViewModel()
+        val source = TaskScope.Device("/storage/emulated/0/Download/source.txt")
+        val destination = TaskScope.Device("/storage/emulated/0/Pictures")
+        tasks.begin(
+            BackgroundTaskKind.FILE_COPY, destination,
+            affectedScopes = listOf(source, destination),
+            readOnly = false
+        ) {}
+        assertFalse(tasks.allowMutation("Delete source", listOf(source)))
+        tasks.keepCurrentTasks()
+        assertFalse(tasks.allowMutation("Rename destination", listOf(destination)))
+        tasks.keepCurrentTasks()
+        assertFalse(tasks.allowScan("Scan changing files", source))
+        tasks.keepCurrentTasks()
+        assertTrue(tasks.allowMutation("Delete unrelated", listOf(
+            TaskScope.Device("/storage/emulated/0/Documents/another.txt")
+        )))
+    }
+
+    @Test fun dismissingNotificationCannotHideStaleResultWarning() {
+        val tasks = TaskCenterViewModel()
+        val id = tasks.begin(BackgroundTaskKind.DEVICE_SEARCH, downloads) {}
+        tasks.complete(id, true, false)
+        tasks.noteChanged(listOf(downloads))
+        assertTrue(tasks.state.value.latestOutdated(BackgroundTaskKind.DEVICE_SEARCH))
+        tasks.dismiss(id)
+        assertTrue(tasks.state.value.tasks.isEmpty())
+        assertTrue(tasks.state.value.latestOutdated(BackgroundTaskKind.DEVICE_SEARCH))
+        val fresh = tasks.begin(BackgroundTaskKind.DEVICE_SEARCH, downloads) {}
+        tasks.complete(fresh, true, false)
+        assertFalse(tasks.state.value.latestOutdated(BackgroundTaskKind.DEVICE_SEARCH))
+    }
+
+    @Test fun externalPermissionLossStopsAllRunningTasks() {
+        val tasks = TaskCenterViewModel()
+        var stops = 0
+        val a = tasks.begin(BackgroundTaskKind.DEVICE_SEARCH, downloads) { stops++ }
+        val b = tasks.begin(BackgroundTaskKind.DUPLICATE_SCAN, pictures) { stops++ }
+        tasks.accessRevoked()
+        assertEquals(2, stops)
+        assertEquals(2, tasks.state.value.runningCount) // still STOPPING
+        tasks.complete(a, false, true)
+        tasks.complete(b, false, true)
+        assertEquals(0, tasks.state.value.runningCount)
+        assertTrue(tasks.state.value.notice?.contains("permission") == true)
+    }
+
+    @Test fun copyCannotReadAnActiveWritersSource() {
+        val tasks = TaskCenterViewModel()
+        val writer = tasks.begin(BackgroundTaskKind.FILE_MUTATION, downloads, readOnly = false) {}
+        assertFalse(tasks.allowCopy("Copy", listOf(downloads), pictures))
+        assertFalse(tasks.allowScan("Search", downloads))
+        tasks.complete(writer, true, false)
+        assertTrue(tasks.allowCopy("Copy", listOf(downloads), pictures))
+        tasks.begin(BackgroundTaskKind.DEVICE_SEARCH, downloads) {}
+        assertTrue(tasks.allowCopy("Copy", listOf(downloads), pictures))
+    }
+
+    @Test fun dismissingCompletedResultRetainsItsScopeForLaterInvalidation() {
+        val tasks = TaskCenterViewModel()
+        val scan = tasks.begin(BackgroundTaskKind.DEVICE_SEARCH, downloads) {}
+        tasks.complete(scan, true, false)
+        tasks.dismiss(scan)
+        tasks.noteChanged(listOf(pictures))
+        assertFalse(tasks.state.value.latestOutdated(BackgroundTaskKind.DEVICE_SEARCH))
+        tasks.noteChanged(listOf(downloads))
+        assertTrue(tasks.state.value.latestOutdated(BackgroundTaskKind.DEVICE_SEARCH))
+    }
+
+    @Test fun activeAndStoppingTasksSurviveHistoryLimit() {
+        val tasks = TaskCenterViewModel()
+        val active = tasks.begin(BackgroundTaskKind.FILE_MUTATION, downloads, readOnly = false) {}
+        tasks.stop(active)
+        repeat(30) {
+            val id = tasks.begin(BackgroundTaskKind.LARGE_FILE_SCAN, pictures) {}
+            tasks.complete(id, true, false)
+        }
+        assertEquals(21, tasks.state.value.tasks.size)
+        assertFalse(tasks.allowScan("Search", downloads))
+        assertTrue(tasks.state.value.tasks.any { it.id == active && it.active })
+        tasks.complete(active, false, true)
+        assertTrue(tasks.allowScan("Search", downloads))
+    }
+
+    @Test fun onlyLatestAnalysisTaskCanOpenSharedResults() {
+        val tasks = TaskCenterViewModel()
+        val first = tasks.begin(BackgroundTaskKind.DUPLICATE_SCAN, downloads) {}
+        tasks.complete(first, true, false)
+        val second = tasks.begin(BackgroundTaskKind.LARGE_FILE_SCAN, pictures) {}
+        tasks.complete(second, true, false)
+        assertFalse(tasks.state.value.canOpen(tasks.state.value.tasks.first { it.id == first }))
+        assertTrue(tasks.state.value.canOpen(tasks.state.value.tasks.first { it.id == second }))
+        tasks.noteChanged(listOf(downloads))
+        assertFalse(tasks.state.value.latestOutdated(BackgroundTaskKind.DUPLICATE_SCAN, BackgroundTaskKind.LARGE_FILE_SCAN))
+        tasks.dismiss(second)
+        tasks.noteChanged(listOf(pictures))
+        assertTrue(tasks.state.value.latestOutdated(BackgroundTaskKind.DUPLICATE_SCAN, BackgroundTaskKind.LARGE_FILE_SCAN))
+    }
+}

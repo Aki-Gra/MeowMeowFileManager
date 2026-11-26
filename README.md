@@ -87,3 +87,43 @@ Duplicate names and invalid filenames during folder creation or renaming are **n
 ## MeowMeow app icon
 
 The launcher now uses a custom MeowMeow cat-and-folder icon: a white smiling cat resting on a golden folder, with a purple paw print and purple background. The adaptive foreground is an Android vector drawable, not a bitmap, so it scales across device densities. Resources include adaptive launcher icons for Android 8+, a round icon alias, and a simplified Android 13+ monochrome resource for themed icons. No extra permission or app data changes are required.
+
+## v0.2 development branch — search and file-type filtering
+
+On `feat/file-tools-v0-2`, Files has a new **Search** icon. Search can filter by filename and file category, either in the current directory or recursively from the chosen storage root. Scans are read-only, run off the UI thread, can be cancelled, and are bounded to 2,000 folders / 20,000 items / 300 displayed results. Partial searches and unreadable folders are labelled. No file search history, index or file contents are stored. This feature is **pending real-device QA** and is **not merged into main**.
+
+The full v0.2 scope and tests are in [docs/V0_2_FILE_TOOLS_PLAN.md](docs/V0_2_FILE_TOOLS_PLAN.md). Copy, bulk operations, duplicate detection and expanded large-file scanning remain planned; do not describe them as implemented.
+
+### Explicit search locations
+
+Search has three choices: **Current folder only**, **Current folder + subfolders**, and **Device storage root + subfolders** (labelled **Selected folder root + subfolders** when using the Android folder picker). The previous **Include subfolders** toggle has been removed because it misleadingly searched from the root rather than the current directory.
+
+
+## v0.2 milestone 2 — Copy (device QA pending)
+
+On the v0.2 feature branch, Files → item menu → **Copy** selects a file or folder. Navigate within Files and choose **Paste here**. Copies preserve the original source. If a destination name exists, MeowMeow now asks to **Keep both (rename copy)**, **Replace existing file** where safe, or **Skip**. Replacements on direct storage are explicitly confirmed, SHA-256 verified in a separate staged file, then atomically swapped; folder and SAF replacements are disabled for safety. An interrupted staging copy attempts to remove only what it created. Single files can cross direct/SAF access modes where permission allows; folder copy is restricted to the same storage mode and selected root. See [v0.2 plan](docs/V0_2_FILE_TOOLS_PLAN.md) for limits and QA steps. The updated conflict UX is pending real-device QA and is not yet merged into main.
+
+
+## v0.2 Milestone 3 — bulk operations (device QA pending)
+
+The Files checklist button enters multi-select mode for files and folders in the current folder. **Select all**, **Deselect all**, **Copy**, **Move**, and **Delete** are available, with an explicit confirmation/review step before processing. Copy/move choose a destination via the existing explorer; delete is permanent and warns about selected folder contents. Processing is sequential with success/skip/failure/remaining counts and cancellation. Moves delete originals only after a verified copy; unexpected partial results must be reviewed. All operations respect storage permissions and never silently overwrite. See [the milestone 3 QA checklist](docs/V0_2_FILE_TOOLS_PLAN.md).
+
+
+### Copy collision prompts (new build — pending phone verification)
+
+On **single Copy** and **Bulk Copy**, a duplicate filename opens a choice for **Keep both (rename copy)**, **Replace existing file** (only for direct storage regular files with atomic replacement), or **Skip this item**. Rename preserves extensions by default and can be edited. Replace is never automatic, and existing content remains intact if staging fails before the atomic commit. SAF providers and folder collisions support Rename/Skip only. Bulk Move still skips destination conflicts rather than overwriting originals. No personal file paths/names are recorded in the error log.
+
+
+## v0.2 Milestone 4 — File analysis (device QA pending)
+
+**Cleanup → Find duplicates and large files** provides two read-only scans: large files with a 10 / 50 / 100 / 500 / 1024 MiB minimum, and exact duplicates verified by size and streamed SHA-256. Both support current folder, current subtree, or selected storage root subtree, direct shared-storage or SAF-granted access, progress, cancel, and incomplete-result warnings. Every scan is limited to 2,000 folders, 20,000 entries, and 300 displayed matches; hashing has a 20 GiB budget. No files are automatically removed and no private paths/content/hashes are persisted or logged. Existing Downloads cleanup is unchanged. Device QA is required before merge.
+
+
+### Remove duplicates directly (device QA pending)
+
+Each exact-duplicate row now has **Delete**, and groups have checkboxes plus **Select all copies** and **Delete selected**. Both one-copy and all-copies deletion require explicit permanent confirmation, with a stronger warning when no copy will remain. Before removing each file, MeowMeow revalidates its size, identity, name and SHA-256 content against the scan. Changed files are skipped; completed deletions remain permanent. Results update and rescan is recommended. No deletion is performed merely by scanning.
+
+
+### Analysis screen scrolling on small phones (device QA pending)
+
+The Cleanup analysis page now scrolls as a **single list** from scan settings to results, rather than keeping a large non-scrolling header above a small independently scrolling results area. On completion it scrolls to the results summary. A top-bar settings shortcut returns to the scan controls, and confirmed duplicate-deletion progress stays visible at the bottom while scrolling.
