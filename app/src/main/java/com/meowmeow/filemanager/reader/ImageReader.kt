@@ -3,7 +3,10 @@ package com.meowmeow.filemanager.reader
 import android.graphics.Bitmap
 import android.net.Uri
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -41,6 +44,7 @@ import com.meowmeow.filemanager.diagnostics.ErrorOperation
 import com.meowmeow.filemanager.ui.resultUnlessCancelled
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlin.math.abs
 import kotlin.math.min
 import kotlin.math.roundToInt
 
@@ -56,7 +60,11 @@ internal fun ImageReader(
     uri: Uri,
     fileName: String,
     onFailure: (Throwable, ErrorOperation) -> Unit,
-    onExternal: () -> Unit
+    onExternal: () -> Unit,
+    galleryPosition: Int? = null,
+    galleryCount: Int? = null,
+    onPrevious: (() -> Unit)? = null,
+    onNext: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
     val repository = remember(context) { ImageReaderRepository(context.applicationContext) }
@@ -98,6 +106,9 @@ internal fun ImageReader(
                 OutlinedButton(onClick = { retry++ }) { Text("Retry") }
                 OutlinedButton(onClick = onExternal) { Text("Open with another app") }
             }
+            if (galleryPosition != null && galleryCount != null && galleryCount > 1) {
+                GalleryControls(galleryPosition, galleryCount, onPrevious, onNext)
+            }
         }
         is ImagePreviewState.Ready -> {
             val bitmap = loaded.bitmap
@@ -135,6 +146,9 @@ internal fun ImageReader(
                             enabled = scale > 1f) { Text("Fit") }
                     }
                 }
+                if (galleryPosition != null && galleryCount != null && galleryCount > 1) {
+                    GalleryControls(galleryPosition, galleryCount, onPrevious, onNext)
+                }
                 Box(
                     Modifier.fillMaxSize()
                         .clipToBounds()
@@ -142,10 +156,40 @@ internal fun ImageReader(
                             viewport = it
                             pan = boundPan(pan, scale, viewport, bitmap)
                         }
-                        .pointerInput(uri, bitmap) {
-                            detectTransformGestures { _, gesturePan, gestureZoom, _ ->
-                                scale = (scale * gestureZoom).coerceIn(1f, 5f)
-                                pan = boundPan(pan + gesturePan, scale, viewport, bitmap)
+                        .pointerInput(uri, bitmap, onPrevious != null, onNext != null) {
+                            val threshold = 70.dp.toPx()
+                            awaitEachGesture {
+                                awaitFirstDown(requireUnconsumed = false)
+                                val startedZoomed = scale > 1.01f
+                                var hadMultipleFingers = false
+                                var horizontal = 0f
+                                var vertical = 0f
+                                do {
+                                    val event = awaitPointerEvent()
+                                    val activeFingers = event.changes.count { it.pressed }
+                                    if (activeFingers > 1) hadMultipleFingers = true
+                                    val panChange = event.calculatePan()
+                                    val zoomChange = event.calculateZoom()
+
+                                    if (hadMultipleFingers || startedZoomed || scale > 1.01f) {
+                                        // Two fingers pinch/zoom; one finger pans only when zoomed.
+                                        scale = (scale * zoomChange).coerceIn(1f, 5f)
+                                        pan = boundPan(pan + panChange, scale, viewport, bitmap)
+                                        event.changes.forEach { it.consume() }
+                                    } else {
+                                        horizontal += panChange.x
+                                        vertical += panChange.y
+                                    }
+                                } while (event.changes.any { it.pressed })
+
+                                // Horizontal, deliberate one-finger swipe at fit-to-screen.
+                                // A pinch or a zoomed image must never change the photo.
+                                if (!startedZoomed && !hadMultipleFingers && scale <= 1.01f &&
+                                    abs(horizontal) >= threshold &&
+                                    abs(horizontal) > abs(vertical) * 1.3f) {
+                                    if (horizontal < 0f) onNext?.invoke()
+                                    else onPrevious?.invoke()
+                                }
                             }
                         },
                     contentAlignment = Alignment.Center
@@ -163,6 +207,28 @@ internal fun ImageReader(
                     )
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun GalleryControls(
+    position: Int,
+    total: Int,
+    previous: (() -> Unit)?,
+    next: (() -> Unit)?
+) {
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        TextButton(onClick = { previous?.invoke() }, enabled = previous != null) {
+            Text("‹ Previous")
+        }
+        Text("$position / $total", style = MaterialTheme.typography.labelSmall)
+        TextButton(onClick = { next?.invoke() }, enabled = next != null) {
+            Text("Next ›")
         }
     }
 }

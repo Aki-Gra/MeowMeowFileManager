@@ -3,6 +3,7 @@ package com.meowmeow.filemanager.reader
 import android.net.Uri
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -41,6 +42,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontFamily
@@ -51,6 +53,7 @@ import com.meowmeow.filemanager.diagnostics.ErrorOperation
 import com.meowmeow.filemanager.ui.resultUnlessCancelled
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlin.math.abs
 
 private sealed interface Preview {
     data object Loading : Preview
@@ -69,6 +72,10 @@ fun ReaderScreen(
     onClose: () -> Unit,
     onShare: () -> Unit,
     onExternal: () -> Unit,
+    galleryPosition: Int? = null,
+    galleryCount: Int? = null,
+    onPreviousImage: (() -> Unit)? = null,
+    onNextImage: (() -> Unit)? = null,
     onReaderFailure: (Throwable, ErrorOperation) -> Unit
 ) {
     Scaffold(
@@ -107,7 +114,10 @@ fun ReaderScreen(
                     onExternal
                 )
                 ReaderFormat.PDF -> PdfReader(uri, repository, onReaderFailure, onExternal)
-                ReaderFormat.IMAGE -> ImageReader(uri, title, onReaderFailure, onExternal)
+                ReaderFormat.IMAGE -> ImageReader(
+                    uri, title, onReaderFailure, onExternal,
+                    galleryPosition, galleryCount, onPreviousImage, onNextImage
+                )
                 else -> TextReader(uri, format, repository, onReaderFailure, onExternal)
             }
         }
@@ -231,8 +241,33 @@ private fun PdfReader(
                 onExternal, onRetry = { retry++ })
             is Preview.PdfData -> {
                 val bitmapWidthDp = with(density) { state.page.bitmap.width.toDp() }
+                val total = state.page.totalPages
+                val swipeThreshold = with(density) { 70.dp.toPx() }
+                val navigationModifier = if (zoom <= 1f) {
+                    Modifier.pointerInput(pageIndex, total) {
+                        var distance = 0f
+                        detectHorizontalDragGestures(
+                            onDragStart = { distance = 0f },
+                            onHorizontalDrag = { change, amount ->
+                                distance += amount
+                                change.consume()
+                            },
+                            onDragEnd = {
+                                // Right-to-left: next page; left-to-right: previous.
+                                if (abs(distance) >= swipeThreshold) {
+                                    if (distance < 0 && pageIndex + 1 < total) pageIndex++
+                                    if (distance > 0 && pageIndex > 0) pageIndex--
+                                }
+                            }
+                        )
+                    }
+                } else {
+                    // Zoomed pages must pan rather than jump to adjacent pages.
+                    Modifier.horizontalScroll(rememberScrollState())
+                }
                 Box(
-                    Modifier.fillMaxSize().horizontalScroll(rememberScrollState())
+                    Modifier.fillMaxSize()
+                        .then(navigationModifier)
                         .verticalScroll(rememberScrollState())
                 ) {
                     Image(
