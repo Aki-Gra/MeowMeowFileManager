@@ -102,7 +102,7 @@ fun ReaderScreen(
                     onExternal
                 )
                 ReaderFormat.PDF -> PdfReader(uri, repository, onReaderFailure, onExternal)
-                ReaderFormat.IMAGE -> ImageReader(uri, onReaderFailure, onExternal)
+                ReaderFormat.IMAGE -> ImageReader(uri, title, onReaderFailure, onExternal)
                 else -> TextReader(uri, format, repository, onReaderFailure, onExternal)
             }
         }

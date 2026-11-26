@@ -54,6 +54,7 @@ enum class ErrorOperation(val code: String, val title: String) {
     APP_CRASH("APP-CRASH", "Unhandled app crash"),
     READER_OPEN("READ-OPEN", "Open in-app document"),
     READER_RENDER("READ-PDF", "Render PDF page"),
+    READER_IMAGE("READ-IMG", "Preview image"),
     DIAGNOSTICS_TEST("LOG-TEST", "Test log")
 }
 

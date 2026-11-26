@@ -23,7 +23,7 @@ internal class ImageReaderRepository(private val context: Context) {
         fun sampleSize(width: Int, height: Int, maximumEdge: Int = MAX_IMAGE_EDGE): Int {
             require(width > 0 && height > 0 && maximumEdge > 0)
             var sample = 1
-            while (max(width, height).toLong() / (sample.toLong() * 2L) >= maximumEdge &&
+            while (max(width, height).toLong() > maximumEdge.toLong() * sample &&
                 sample <= Int.MAX_VALUE / 2
             ) {
                 sample *= 2
