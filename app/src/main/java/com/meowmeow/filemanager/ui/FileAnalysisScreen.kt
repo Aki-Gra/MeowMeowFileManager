@@ -106,9 +106,36 @@ fun FileAnalysisScreen(
         onDispose { onCancel() }
     }
 
-    Scaffold(topBar = {
+    Scaffold(
+        bottomBar = {
+            if (state.isDeleting) {
+                Surface(tonalElevation = 3.dp) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        LinearProgressIndicator(Modifier.fillMaxWidth())
+                        val progress = state.deleteSummary
+                        Text("Deleting selected files: " +
+                            "${progress?.completed?.size ?: 0}/${progress?.total ?: 0}")
+                        TextButton(onClick = onCancelDeletion) {
+                            Text("Stop remaining deletions")
+                        }
+                    }
+                }
+            }
+        },
+        topBar = {
         TopAppBar(
             title = { Text("Find files") },
+            actions = {
+                IconButton(
+                    onClick = { scrollScope.launch { listState.animateScrollToItem(0) } },
+                    enabled = !state.isDeleting
+                ) {
+                    Icon(Icons.Default.Tune, contentDescription = "Show scan settings")
+                }
+            },
             navigationIcon = {
                 IconButton(onClick = onBack, enabled = !state.isDeleting) {
                     Icon(Icons.Default.ArrowBack, contentDescription = "Back to Cleanup")
@@ -211,12 +238,6 @@ fun FileAnalysisScreen(
                     style = MaterialTheme.typography.bodySmall
                 )
             }
-            if (state.isDeleting) {
-                LinearProgressIndicator(Modifier.fillMaxWidth())
-                val progress = state.deleteSummary
-                Text("Deleting selected files: ${progress?.completed?.size ?: 0}/${progress?.total ?: 0}")
-                OutlinedButton(onClick = onCancelDeletion) { Text("Stop remaining deletions") }
-            }
             state.deleteNotice?.let {
                 Text(it, style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error)
@@ -281,7 +302,10 @@ fun FileAnalysisScreen(
                             modifier = Modifier.padding(16.dp))
                     }
                 } else if (showingCurrent && state.kind == AnalysisKind.DUPLICATES) {
-                    items(state.duplicateGroups) { group ->
+                    items(
+                        items = state.duplicateGroups,
+                        key = { it.members.first().entry.id }
+                    ) { group ->
                         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                             Text(
                                 "${group.members.size} identical files · " +
