@@ -14,6 +14,7 @@ import com.meowmeow.filemanager.diagnostics.ErrorLogStore
 import com.meowmeow.filemanager.diagnostics.ErrorOperation
 import com.meowmeow.filemanager.model.AnalysisKind
 import com.meowmeow.filemanager.model.AnalysisItem
+import com.meowmeow.filemanager.model.AnalysisOutcome
 import com.meowmeow.filemanager.model.FileAnalysisScanner
 import com.meowmeow.filemanager.model.FileEntry
 import com.meowmeow.filemanager.model.SearchScope
@@ -59,6 +60,15 @@ data class FileAnalysisUiState(
     val deleteSummary: DuplicateDeleteSummary? = null,
     val deleteNotice: String? = null,
     val notice: String? = null
+)
+
+/** Prepared entirely on IO so DocumentsProvider lookups never block Main. */
+private data class PreparedAnalysis(
+    val outcome: AnalysisOutcome<CopyNode>,
+    val large: List<FileAnalysisHit>,
+    val groups: List<DuplicateGroupResult>,
+    val targets: Map<String, DuplicateDeleteTarget<CopyNode>>,
+    val additionalUnreadable: Int
 )
 
 class FileAnalysisViewModel(
@@ -108,8 +118,8 @@ class FileAnalysisViewModel(
                 isRunning = true, kind = kind, scope = scope, thresholdMiB = minimumMiB
             )
             try {
-                val result = withContext(Dispatchers.IO) {
-                    FileAnalysisScanner(ops).scan(
+                val prepared = withContext(Dispatchers.IO) {
+                    val result = FileAnalysisScanner(ops).scan(
                         root = root.node,
                         kind = kind,
                         recursive = scope.recursive,
@@ -124,38 +134,65 @@ class FileAnalysisViewModel(
                             }
                         }
                     )
-                }
-                fun hit(item: AnalysisItem<CopyNode>): FileAnalysisHit {
-                    val id = when (val node = item.node) {
-                        is CopyNode.Device -> Uri.fromFile(node.file).toString()
-                        is CopyNode.Scoped -> node.file.uri.toString()
-                    }
-                    val type = runCatching { ops.mime(item.node) }.getOrNull()
-                    return FileAnalysisHit(
-                        FileEntry(
-                            id = id, name = item.name, isDirectory = false,
-                            sizeBytes = item.size, modifiedAtMillis = 0L,
-                            mimeType = type, canWrite = false
-                        ), item.relativeFolder
-                    )
-                }
-                verifiedTargets.clear()
-                for (group in result.duplicateGroups) {
-                    for (item in group.members) {
-                        val entryId = when (val node = item.node) {
+                    fun hit(item: AnalysisItem<CopyNode>): FileAnalysisHit {
+                        val id = when (val node = item.node) {
                             is CopyNode.Device -> Uri.fromFile(node.file).toString()
                             is CopyNode.Scoped -> node.file.uri.toString()
                         }
-                        verifiedTargets[entryId] = DuplicateDeleteTarget(
-                            node = item.node,
-                            identity = ops.identity(item.node),
-                            name = item.name,
-                            size = item.size,
-                            modifiedAtMillis = item.modifiedAtMillis,
-                            sha256 = group.sha256
+                        val mime = runCatching { ops.mime(item.node) }.getOrNull()
+                        return FileAnalysisHit(
+                            FileEntry(
+                                id = id, name = item.name, isDirectory = false,
+                                sizeBytes = item.size, modifiedAtMillis = item.modifiedAtMillis,
+                                mimeType = mime, canWrite = false
+                            ), item.relativeFolder
                         )
                     }
+
+                    val targets = linkedMapOf<String, DuplicateDeleteTarget<CopyNode>>()
+                    var unavailable = 0
+                    val groups = result.duplicateGroups.mapNotNull { group ->
+                        val available = group.members.mapNotNull { item ->
+                            try {
+                                val entry = hit(item)
+                                targets[entry.entry.id] = DuplicateDeleteTarget(
+                                    node = item.node,
+                                    identity = ops.identity(item.node),
+                                    name = item.name,
+                                    size = item.size,
+                                    modifiedAtMillis = item.modifiedAtMillis,
+                                    sha256 = group.sha256
+                                )
+                                entry
+                            } catch (cancelled: CancellationException) {
+                                throw cancelled
+                            } catch (_: Exception) {
+                                unavailable++
+                                null
+                            }
+                        }
+                        if (available.size < 2) {
+                            available.forEach { targets.remove(it.entry.id) }
+                            null
+                        } else DuplicateGroupResult(
+                            members = available,
+                            sizeBytes = group.fileSize,
+                            reclaimableBytes = group.fileSize.coerceAtLeast(0) *
+                                (available.size - 1).toLong()
+                        )
+                    }
+                    PreparedAnalysis(
+                        outcome = result,
+                        large = result.largeFiles.map(::hit),
+                        groups = groups,
+                        targets = targets.toMap(),
+                        additionalUnreadable = unavailable
+                    )
                 }
+                // Only publish immutable snapshots after all provider I/O completes.
+                verifiedTargets.clear()
+                verifiedTargets.putAll(prepared.targets)
+                val result = prepared.outcome
                 _state.value = FileAnalysisUiState(
                     complete = true,
                     kind = kind,
@@ -164,17 +201,11 @@ class FileAnalysisViewModel(
                     foldersVisited = result.scannedFolders,
                     itemsVisited = result.scannedFiles,
                     hashedFiles = result.hashedFiles,
-                    unreadable = result.unreadable,
+                    unreadable = result.unreadable + prepared.additionalUnreadable,
                     truncated = result.truncated,
-                    large = result.largeFiles.map(::hit),
-                    duplicateGroups = result.duplicateGroups.map { group ->
-                        DuplicateGroupResult(
-                            members = group.members.map(::hit),
-                            sizeBytes = group.fileSize,
-                            reclaimableBytes = group.estimatedReclaimableBytes
-                        )
-                    },
-                    reclaimableBytes = result.reclaimableBytes
+                    large = prepared.large,
+                    duplicateGroups = prepared.groups,
+                    reclaimableBytes = prepared.groups.sumOf { it.reclaimableBytes }
                 )
             } catch (_: CancellationException) {
                 // Expected user navigation/cancellation: never log.

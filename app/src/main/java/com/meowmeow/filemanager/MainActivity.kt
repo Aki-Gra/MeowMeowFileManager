@@ -344,9 +344,10 @@ class MainActivity : ComponentActivity() {
                                 usingDevice = usingDevice,
                                 sourcePath = if (usingDevice) deviceState.path else scopedState.path,
                                 onBack = {
-                                    analysis.cancel()
+                                    analysis.reset()
                                     page = Page.CLEANUP
                                 },
+                                onLeave = analysis::reset,
                                 onStart = { kind, scope, minimumMiB ->
                                     val folder = if (usingDevice) device.analysisFolder(scope)
                                         else scoped.analysisFolder(scope)

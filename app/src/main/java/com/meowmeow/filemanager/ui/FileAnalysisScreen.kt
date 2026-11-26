@@ -66,6 +66,7 @@ fun FileAnalysisScreen(
     usingDevice: Boolean,
     sourcePath: List<String>,
     onBack: () -> Unit,
+    onLeave: () -> Unit,
     onStart: (AnalysisKind, SearchScope, Int) -> Unit,
     onCancel: () -> Unit,
     onOpenFile: (FileEntry) -> Unit,
@@ -103,7 +104,7 @@ fun FileAnalysisScreen(
     BackHandler { if (!state.isDeleting) onBack() }
     // Switching to another tab also cancels a live scan.
     DisposableEffect(Unit) {
-        onDispose { onCancel() }
+        onDispose { onLeave() }
     }
 
     Scaffold(

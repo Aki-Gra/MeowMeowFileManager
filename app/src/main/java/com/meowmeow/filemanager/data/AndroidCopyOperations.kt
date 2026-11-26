@@ -1,6 +1,7 @@
 package com.meowmeow.filemanager.data
 
 import android.content.Context
+import android.provider.DocumentsContract
 import android.webkit.MimeTypeMap
 import androidx.documentfile.provider.DocumentFile
 import com.meowmeow.filemanager.model.BulkOperations
@@ -206,6 +207,41 @@ class AndroidCopyOperations(context: Context) : BulkOperations<CopyNode> {
         }
     }
 
+    /**
+     * DocumentFile.listFiles() suppresses provider failures and can report
+     * an empty array when listing failed. Never use it to authorize a
+     * potentially recursive provider delete. A direct DocumentsContract query
+     * distinguishes null/throwing queries from an observed empty cursor.
+     * Providers not offering the query cannot delete directories here.
+     */
+    private fun requireConfirmedEmptyScopedDirectory(file: DocumentFile) {
+        val uri = file.uri
+        if (!DocumentsContract.isTreeUri(uri))
+            throw ExpectedFileOperationException(
+                "Cannot verify the folder contents. No files were deleted."
+            )
+        try {
+            val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(
+                uri, DocumentsContract.getDocumentId(uri)
+            )
+            val projection = arrayOf(DocumentsContract.Document.COLUMN_DOCUMENT_ID)
+            val cursor = resolver.query(childrenUri, projection, null, null, null)
+                ?: throw IOException("Folder contents could not be verified.")
+            cursor.use {
+                if (it.moveToFirst())
+                    throw ExpectedFileOperationException(
+                        "Folder still contains files. It was not deleted."
+                    )
+            }
+        } catch (expected: ExpectedFileOperationException) {
+            throw expected
+        } catch (failure: SecurityException) {
+            throw failure
+        } catch (failure: Exception) {
+            throw IOException("Folder contents could not be verified. No folder was deleted.", failure)
+        }
+    }
+
     override fun deleteSource(item: CopyNode): Boolean = when (item) {
         is CopyNode.Device -> {
             val file = checked(item)
@@ -217,8 +253,7 @@ class AndroidCopyOperations(context: Context) : BulkOperations<CopyNode> {
         is CopyNode.Scoped -> {
             val file = doc(item)
             if (!file.canWrite()) throw IOException("Cannot delete read-only item.")
-            if (file.isDirectory && file.listFiles().isNotEmpty())
-                throw IOException("Folder must be empty before deletion.")
+            if (file.isDirectory) requireConfirmedEmptyScopedDirectory(file)
             file.delete()
         }
     }
