@@ -330,12 +330,14 @@ class FileAnalysisViewModel(
             deleteSummary = DuplicateDeleteSummary(total = selected.size),
             deleteNotice = null
         )
-        deleteJob = viewModelScope.launch {
+        var deleteTaskToken = -1L
+        val deletionTask = viewModelScope.launch(start = CoroutineStart.LAZY) {
             try {
                 val summary = withContext(Dispatchers.IO) {
                     VerifiedDuplicateDeletion(ops).delete(selected) { progress ->
                         withContext(NonCancellable + Dispatchers.Main) {
                             applyDeletionProgress(progress, idsByIdentity)
+                            taskCenter.progress(deleteTaskToken, 0, progress.completed.size)
                         }
                     }
                 }
@@ -368,6 +370,26 @@ class FileAnalysisViewModel(
                 deleteJob = null
             }
         }
+        deleteJob = deletionTask
+        val scopes = selected.map { target ->
+            copyTaskScope(CopyPlace(target.node, "duplicate", emptyList()))
+        }
+        val token = taskCenter.begin(
+            BackgroundTaskKind.DUPLICATE_DELETE,
+            scopes.firstOrNull() ?: com.meowmeow.filemanager.model.TaskScope.Unknown,
+            affectedScopes = scopes, readOnly = false,
+            cancel = { deletionTask.cancel() }
+        )
+        deleteTaskToken = token
+        deletionTask.invokeOnCompletion { cause ->
+            taskCenter.complete(
+                token,
+                success = cause == null && _state.value.deleteSummary?.failed == 0 &&
+                    !_state.value.isDeleting,
+                wasCancelled = cause is CancellationException || deletionTask.isCancelled
+            )
+        }
+        deletionTask.start()
     }
 
     fun cancelDeletion() {

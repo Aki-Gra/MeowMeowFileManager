@@ -86,7 +86,7 @@ class MainActivity : ComponentActivity() {
             this, DeviceExplorerViewModel.Factory(applicationContext, taskCenter)
         )[DeviceExplorerViewModel::class.java]
         val cleanup = ViewModelProvider(
-            this, CleanupViewModel.Factory(applicationContext)
+            this, CleanupViewModel.Factory(applicationContext, taskCenter)
         )[CleanupViewModel::class.java]
         val analysis = ViewModelProvider(
             this, FileAnalysisViewModel.Factory(applicationContext, taskCenter)
@@ -165,7 +165,8 @@ class MainActivity : ComponentActivity() {
                 }
             }
             LaunchedEffect(page, allFilesGranted) {
-                if (page == Page.CLEANUP && allFilesGranted) cleanup.scan()
+                if (page == Page.CLEANUP && allFilesGranted &&
+                    !cleanupState.scanned && !cleanupState.isLoading) cleanup.scan()
             }
 
             val browseDevice = {

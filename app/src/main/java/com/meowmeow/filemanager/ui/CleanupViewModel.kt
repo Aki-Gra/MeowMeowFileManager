@@ -9,9 +9,13 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.meowmeow.filemanager.data.LocalFileRepository
+import com.meowmeow.filemanager.model.TaskScope
+import android.os.Environment
 import com.meowmeow.filemanager.model.CleanupCandidate
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -32,20 +36,27 @@ data class CleanupUiState(
 
 class CleanupViewModel(
     private val repository: LocalFileRepository,
-    private val errorLog: ErrorLogStore
+    private val errorLog: ErrorLogStore,
+    private val taskCenter: TaskCenterViewModel
 ) : ViewModel() {
     private val _state = MutableStateFlow(CleanupUiState())
     val state: StateFlow<CleanupUiState> = _state
     private var task: Job? = null
+    private val downloadsScope: TaskScope
+        get() = deviceTaskScope(
+            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+        )
 
     fun scan() {
+        if (_state.value.isLoading) return
+        if (!taskCenter.allowScan("Scan Downloads", downloadsScope)) return
         if (!repository.hasAccess()) {
             _state.value = CleanupUiState(message = "Grant All files access to scan Downloads.")
             return
         }
         task?.cancel()
-        task = viewModelScope.launch {
-            _state.value = CleanupUiState(isLoading = true)
+        _state.value = CleanupUiState(isLoading = true)
+        val scanTask = viewModelScope.launch(start = CoroutineStart.LAZY) {
             val result = resultUnlessCancelled {
                 withContext(Dispatchers.IO) { repository.scanLargeDownloads() }
             }
@@ -60,6 +71,21 @@ class CleanupViewModel(
                 _state.value = CleanupUiState(message = it.message ?: "Scan failed.")
             }
         }
+        task = scanTask
+        val token = taskCenter.begin(
+            BackgroundTaskKind.DOWNLOADS_SCAN, downloadsScope,
+            cancel = { scanTask.cancel() }
+        )
+        scanTask.invokeOnCompletion { cause ->
+            if (cause is CancellationException && task === scanTask) {
+                _state.value = CleanupUiState(message = "Downloads scan stopped.")
+            }
+            taskCenter.complete(
+                token, success = cause == null && _state.value.scanned,
+                wasCancelled = cause is CancellationException || scanTask.isCancelled
+            )
+        }
+        scanTask.start()
     }
 
     fun toggleSelected(id: String) {
@@ -74,8 +100,8 @@ class CleanupViewModel(
         val items = _state.value.selected
         if (items.isEmpty() || _state.value.isLoading) return
         task?.cancel()
-        task = viewModelScope.launch {
-            _state.value = _state.value.copy(isLoading = true, message = null)
+        _state.value = _state.value.copy(isLoading = true, message = null)
+        val deleteTask = viewModelScope.launch(start = CoroutineStart.LAZY) {
             val (successes, failed) = withContext(Dispatchers.IO) {
                 val failureMessages = mutableListOf<String>()
                 var deleted = 0
@@ -112,18 +138,30 @@ class CleanupViewModel(
                 _state.value = CleanupUiState(message = "Some files were processed, but refreshing failed.")
             }
         }
+        task = deleteTask
+        val token = taskCenter.begin(
+            BackgroundTaskKind.DOWNLOADS_DELETE, downloadsScope,
+            readOnly = false, cancel = { deleteTask.cancel() }
+        )
+        deleteTask.invokeOnCompletion { cause ->
+            taskCenter.complete(
+                token, success = cause == null && _state.value.scanned,
+                wasCancelled = cause is CancellationException || deleteTask.isCancelled
+            )
+        }
+        deleteTask.start()
     }
 
     fun clearMessage() {
         _state.value = _state.value.copy(message = null)
     }
 
-    class Factory(context: Context) : ViewModelProvider.Factory {
+    class Factory(context: Context, private val taskCenter: TaskCenterViewModel) : ViewModelProvider.Factory {
         private val errorLog = (context.applicationContext as MeowMeowApp).errorLog
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
             require(modelClass.isAssignableFrom(CleanupViewModel::class.java))
-            return CleanupViewModel(LocalFileRepository(), errorLog) as T
+            return CleanupViewModel(LocalFileRepository(), errorLog, taskCenter) as T
         }
     }
 }
