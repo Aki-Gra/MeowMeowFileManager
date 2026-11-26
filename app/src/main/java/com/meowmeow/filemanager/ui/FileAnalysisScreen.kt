@@ -1,7 +1,6 @@
 package com.meowmeow.filemanager.ui
 
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.heightIn
@@ -20,11 +19,9 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.InsertDriveFile
-import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Checkbox
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
@@ -303,78 +300,33 @@ fun FileAnalysisScreen(
                             modifier = Modifier.padding(16.dp))
                     }
                 } else if (showingCurrent && state.kind == AnalysisKind.DUPLICATES) {
-                    items(
-                        items = state.duplicateGroups,
-                        key = { it.members.first().entry.id }
-                    ) { group ->
-                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                            Text(
-                                "${group.members.size} identical files · " +
-                                    humanSize(group.sizeBytes) + " each · " +
-                                    humanSize(group.reclaimableBytes) + " potentially reclaimable",
-                                modifier = Modifier.padding(top = 10.dp, bottom = 4.dp),
-                                style = MaterialTheme.typography.titleSmall
+                    // Each duplicate member is a separate lazy-list item.
+                    state.duplicateGroups.forEach { group ->
+                        val groupKey = group.members.first().entry.id
+                        item(key = "duplicate-header-$groupKey") {
+                            DuplicateGroupHeader(
+                                group = group,
+                                selectedIds = state.selectedDuplicateIds,
+                                isDeleting = state.isDeleting,
+                                onSelectGroup = onSelectGroup,
+                                onRequestDelete = onRequestDelete
                             )
-                            Row(
-                                modifier = Modifier.fillMaxWidth()
-                                    .horizontalScroll(rememberScrollState()),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                val groupIds = group.members.map { it.entry.id }
-                                TextButton(
-                                    enabled = !state.isDeleting,
-                                    onClick = { onSelectGroup(groupIds) }
-                                ) {
-                                    Text(if (groupIds.all { it in state.selectedDuplicateIds })
-                                        "Deselect all" else "Select all copies")
-                                }
-                                val selectedCount = groupIds.count {
-                                    it in state.selectedDuplicateIds
-                                }
-                                Button(
-                                    enabled = !state.isDeleting && selectedCount > 0,
-                                    onClick = { onRequestDelete(group) }
-                                ) { Text("Delete selected ($selectedCount)") }
-                            }
-                            group.members.forEach { hit ->
-                                ListItem(
-                                    modifier = Modifier.fillMaxWidth()
-                                        .clickable(enabled = !state.isDeleting) {
-                                            onOpenFile(hit.entry)
-                                        },
-                                    leadingContent = {
-                                        Checkbox(
-                                            checked = hit.entry.id in state.selectedDuplicateIds,
-                                            enabled = !state.isDeleting,
-                                            onCheckedChange = {
-                                                onToggleDuplicate(hit.entry.id)
-                                            }
-                                        )
-                                    },
-                                    headlineContent = {
-                                        Text(hit.entry.name, maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis)
-                                    },
-                                    supportingContent = {
-                                        Text(humanSize(hit.entry.sizeBytes) + " · " + hit.location,
-                                            maxLines = 2, overflow = TextOverflow.Ellipsis)
-                                    },
-                                    trailingContent = {
-                                        IconButton(
-                                            enabled = !state.isDeleting,
-                                            onClick = {
-                                                onRequestSingleDelete(group, hit.entry.id)
-                                            }
-                                        ) {
-                                            Icon(Icons.Default.DeleteOutline,
-                                                contentDescription = "Delete " + hit.entry.name)
-                                        }
-                                    }
-                                )
-                            }
-                            HorizontalDivider()
                         }
+                        items(
+                            items = group.members,
+                            key = { hit -> "duplicate-file-${hit.entry.id}" }
+                        ) { hit ->
+                            DuplicateFileRow(
+                                hit = hit,
+                                group = group,
+                                selected = hit.entry.id in state.selectedDuplicateIds,
+                                isDeleting = state.isDeleting,
+                                onOpenFile = onOpenFile,
+                                onToggleDuplicate = onToggleDuplicate,
+                                onRequestSingleDelete = onRequestSingleDelete
+                            )
+                        }
+                        item(key = "duplicate-divider-$groupKey") { HorizontalDivider() }
                     }
                     if (state.duplicateGroups.isEmpty()) item {
                         Text("No exact duplicates found in the scanned scope.",
