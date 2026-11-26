@@ -244,3 +244,22 @@ The user reported the Milestone 3 device test passed, with one UX request: **Cop
 - [ ] Test SAF picker access, permission revocation and inaccessible items; check failed counts and no unexpected changes.
 - [ ] Try Stop remaining deletions on a large disposable set. Completed work remains and unprocessed work stops.
 - [ ] Test portrait/dark mode, group display after removal, rescan, and regressions for Search, Copy Replace/Rename/Skip, bulk operations and existing Downloads cleanup.
+
+
+## Small-phone usability refinement — analysis page scrolling (26 Nov 2026)
+
+**User feedback:** On small screens, the fixed scan settings take too much height and only the results list scrolls. It is difficult to see duplicate results and deletion controls.
+
+**Change implemented (device QA pending):**
+- The entire **Cleanup → Find duplicates and large files** page, including scan mode, location, threshold, progress, results summary and file results, is now **one vertically scrolling list**.
+- On scan completion the page scrolls to the results summary automatically; scroll up normally to see the controls.
+- A **Show scan settings** control in the page's top bar jumps back to the settings at the start of the list, even when scrolled far down.
+- Progress for a confirmed duplicate deletion stays visible in a bottom bar with **Stop remaining deletions** while the main page is scrolled. The existing delete confirmation dialog, including its all-copies warning, is unchanged.
+- The same single-scroll behavior applies to both Large files and Exact duplicates; item counts, selected states and scan safety remain unchanged.
+
+**Device QA:**
+- [ ] On a small portrait screen, scroll the entire page from settings to duplicate groups; the search settings must move out of the way.
+- [ ] After a completed scan, see the summary/results without needing to navigate an inner scrolling list; tap Show scan settings to go back to the top.
+- [ ] Verify three scan scopes, Large files thresholds, group selection, Delete beside an individual duplicate and Delete selected still work.
+- [ ] During a multi-copy deletion, the bottom progress and Stop remaining deletions stay on screen when scrolled.
+- [ ] Test long group lists, system Back, empty results, landscape and dark mode without overlapping controls or clipping.

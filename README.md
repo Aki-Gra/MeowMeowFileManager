@@ -122,3 +122,8 @@ On **single Copy** and **Bulk Copy**, a duplicate filename opens a choice for **
 ### Remove duplicates directly (device QA pending)
 
 Each exact-duplicate row now has **Delete**, and groups have checkboxes plus **Select all copies** and **Delete selected**. Both one-copy and all-copies deletion require explicit permanent confirmation, with a stronger warning when no copy will remain. Before removing each file, MeowMeow revalidates its size, identity, name and SHA-256 content against the scan. Changed files are skipped; completed deletions remain permanent. Results update and rescan is recommended. No deletion is performed merely by scanning.
+
+
+### Analysis screen scrolling on small phones (device QA pending)
+
+The Cleanup analysis page now scrolls as a **single list** from scan settings to results, rather than keeping a large non-scrolling header above a small independently scrolling results area. On completion it scrolls to the results summary. A top-bar settings shortcut returns to the scan controls, and confirmed duplicate-deletion progress stays visible at the bottom while scrolling.
