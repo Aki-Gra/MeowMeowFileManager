@@ -101,6 +101,40 @@ class TaskCenterViewModelTest {
         assertEquals(1, tasks.state.value.runningCount)
     }
 
+    @Test fun activeCopyProtectsBothItsSourceAndDestination() {
+        val tasks = TaskCenterViewModel()
+        val source = TaskScope.Device("/storage/emulated/0/Download/source.txt")
+        val destination = TaskScope.Device("/storage/emulated/0/Pictures")
+        tasks.begin(
+            BackgroundTaskKind.FILE_COPY, destination,
+            affectedScopes = listOf(source, destination),
+            readOnly = false
+        ) {}
+        assertFalse(tasks.allowMutation("Delete source", listOf(source)))
+        tasks.keepCurrentTasks()
+        assertFalse(tasks.allowMutation("Rename destination", listOf(destination)))
+        tasks.keepCurrentTasks()
+        assertFalse(tasks.allowScan("Scan changing files", source))
+        tasks.keepCurrentTasks()
+        assertTrue(tasks.allowMutation("Delete unrelated", listOf(
+            TaskScope.Device("/storage/emulated/0/Documents/another.txt")
+        )))
+    }
+
+    @Test fun dismissingNotificationCannotHideStaleResultWarning() {
+        val tasks = TaskCenterViewModel()
+        val id = tasks.begin(BackgroundTaskKind.DEVICE_SEARCH, downloads) {}
+        tasks.complete(id, true, false)
+        tasks.noteChanged(listOf(downloads))
+        assertTrue(tasks.state.value.latestOutdated(BackgroundTaskKind.DEVICE_SEARCH))
+        tasks.dismiss(id)
+        assertTrue(tasks.state.value.tasks.isEmpty())
+        assertTrue(tasks.state.value.latestOutdated(BackgroundTaskKind.DEVICE_SEARCH))
+        val fresh = tasks.begin(BackgroundTaskKind.DEVICE_SEARCH, downloads) {}
+        tasks.complete(fresh, true, false)
+        assertFalse(tasks.state.value.latestOutdated(BackgroundTaskKind.DEVICE_SEARCH))
+    }
+
     @Test fun externalPermissionLossStopsAllRunningTasks() {
         val tasks = TaskCenterViewModel()
         var stops = 0
