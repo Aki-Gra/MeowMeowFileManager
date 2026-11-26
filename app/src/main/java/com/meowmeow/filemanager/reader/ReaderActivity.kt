@@ -2,6 +2,7 @@ package com.meowmeow.filemanager.reader
 
 import android.content.ActivityNotFoundException
 import android.content.ClipData
+import android.content.ComponentName
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
@@ -74,7 +75,14 @@ class ReaderActivity : ComponentActivity() {
                 clipData = ClipData.newUri(contentResolver, "MeowMeow document", uri)
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
-            startActivity(Intent.createChooser(external, "Open with another app"))
+            // Exclude our own exported handler to avoid reopening MeowMeow in a loop.
+            val chooser = Intent.createChooser(external, "Open with another app").apply {
+                putExtra(
+                    Intent.EXTRA_EXCLUDE_COMPONENTS,
+                    arrayOf(ComponentName(this@ReaderActivity, ExternalOpenActivity::class.java))
+                )
+            }
+            startActivity(chooser)
         } catch (failure: ActivityNotFoundException) {
             Toast.makeText(this, "No other app can open this document", Toast.LENGTH_LONG).show()
         } catch (failure: Exception) {

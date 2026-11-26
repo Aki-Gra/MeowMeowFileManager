@@ -54,7 +54,11 @@ enum class ReaderFormat {
                     "application/vnd.oasis.opendocument.text" -> ODT
                     in imageMimes -> IMAGE
                     "text/plain", "application/json", "application/xml", "text/xml",
-                    "text/csv", "text/markdown", "application/x-yaml" -> TEXT
+                    "text/csv", "text/markdown", "application/x-yaml", "application/yaml",
+                    "application/x-toml", "application/toml", "application/javascript",
+                    "application/x-javascript", "application/ecmascript", "application/sql",
+                    "application/x-sh", "application/x-ndjson", "application/ld+json",
+                    "application/geo+json", "application/xhtml+xml" -> TEXT
                     else -> if (mime?.startsWith("text/", ignoreCase = true) == true) TEXT else UNSUPPORTED
                 }
             }
