@@ -25,6 +25,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -51,7 +52,8 @@ data class BulkUiState(
 /** In-memory multi-selection, never persisted to preferences or diagnostics. */
 class BulkViewModel(
     private val operations: AndroidCopyOperations,
-    private val errorLog: ErrorLogStore
+    private val errorLog: ErrorLogStore,
+    private val taskCenter: TaskCenterViewModel
 ) : ViewModel() {
     private val chosen = linkedMapOf<String, Pair<CopyPlace, FileEntry>>()
     private val _state = MutableStateFlow(BulkUiState())
@@ -188,11 +190,12 @@ class BulkViewModel(
         if (sources.isEmpty()) return
         val target = destination
         if (action != BulkAction.DELETE && target == null) return
+        var taskToken = -1L
         _state.value = _state.value.copy(
             stage = BulkStage.RUNNING, progress = BulkProgress(total = sources.size),
             notice = null, cancelled = false
         )
-        job = viewModelScope.launch {
+        val operationTask = viewModelScope.launch(start = CoroutineStart.LAZY) {
             try {
                 val completed = withContext(Dispatchers.IO) {
                     SafeBulkOperations(operations).execute(
@@ -234,6 +237,7 @@ class BulkViewModel(
                             // tapped while the UI progress update is dispatched.
                             withContext(NonCancellable + Dispatchers.Main) {
                                 _state.value = _state.value.copy(progress = progress)
+                                taskCenter.progress(taskToken, progress.processed, progress.filesCopied)
                             }
                         }
                     )
@@ -260,6 +264,26 @@ class BulkViewModel(
                 onFinished()
             }
         }
+        job = operationTask
+        val scopes = mutationPlaces().map(::copyTaskScope)
+        val token = taskCenter.begin(
+            BackgroundTaskKind.BULK_OPERATION,
+            scopes.firstOrNull() ?: com.meowmeow.filemanager.model.TaskScope.Unknown,
+            affectedScopes = scopes.ifEmpty {
+                listOf(com.meowmeow.filemanager.model.TaskScope.Unknown)
+            },
+            readOnly = false, cancel = { operationTask.cancel() }
+        )
+        taskToken = token
+        operationTask.invokeOnCompletion { cause ->
+            taskCenter.complete(
+                token,
+                success = cause == null && _state.value.stage == BulkStage.RESULTS &&
+                    _state.value.progress?.failed == 0,
+                wasCancelled = cause is CancellationException || operationTask.isCancelled
+            )
+        }
+        operationTask.start()
     }
 
     private fun recordFailedAction(action: BulkAction) {
@@ -280,14 +304,14 @@ class BulkViewModel(
 
     fun dismissNotice() { _state.value = _state.value.copy(notice = null) }
 
-    class Factory(context: Context): ViewModelProvider.Factory {
+    class Factory(context: Context, private val taskCenter: TaskCenterViewModel): ViewModelProvider.Factory {
         private val app = context.applicationContext
         @Suppress("UNCHECKED_CAST")
         override fun <T: ViewModel> create(modelClass: Class<T>): T {
             require(modelClass.isAssignableFrom(BulkViewModel::class.java))
             return BulkViewModel(
                 AndroidCopyOperations(app),
-                (app as MeowMeowApp).errorLog
+                (app as MeowMeowApp).errorLog, taskCenter
             ) as T
         }
     }

@@ -21,6 +21,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -39,7 +40,8 @@ data class CopyUiState(
 /** In-memory, single-item clipboard. Never persists file paths, handles or contents. */
 class CopyViewModel(
     private val copyOps: AndroidCopyOperations,
-    private val errorLog: ErrorLogStore
+    private val errorLog: ErrorLogStore,
+    private val taskCenter: TaskCenterViewModel
 ) : ViewModel() {
     private val _state = MutableStateFlow(CopyUiState())
     val state: StateFlow<CopyUiState> = _state
@@ -89,7 +91,7 @@ class CopyViewModel(
             isCopying = true, filesCopied = 0, foldersCopied = 0,
             bytesCopied = 0, notice = null
         )
-        job = viewModelScope.launch {
+        val copyTask = viewModelScope.launch(start = CoroutineStart.LAZY) {
             try {
                 val result = withContext(Dispatchers.IO) {
                     val isFolder = copyOps.isDirectory(source.node)
@@ -145,6 +147,18 @@ class CopyViewModel(
                 job = null
             }
         }
+        job = copyTask
+        val token = taskCenter.begin(
+            BackgroundTaskKind.FILE_COPY, copyTaskScope(destination),
+            readOnly = false, cancel = { copyTask.cancel() }
+        )
+        copyTask.invokeOnCompletion { cause ->
+            taskCenter.complete(
+                token, success = cause == null && selected == null,
+                wasCancelled = cause is CancellationException || copyTask.isCancelled
+            )
+        }
+        copyTask.start()
     }
 
     fun cancelOrClear() {
@@ -163,14 +177,14 @@ class CopyViewModel(
         _state.value = _state.value.copy(notice = null)
     }
 
-    class Factory(context: Context) : ViewModelProvider.Factory {
+    class Factory(context: Context, private val taskCenter: TaskCenterViewModel) : ViewModelProvider.Factory {
         private val app = context.applicationContext
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
             require(modelClass.isAssignableFrom(CopyViewModel::class.java))
             return CopyViewModel(
                 AndroidCopyOperations(app),
-                (app as MeowMeowApp).errorLog
+                (app as MeowMeowApp).errorLog, taskCenter
             ) as T
         }
     }
