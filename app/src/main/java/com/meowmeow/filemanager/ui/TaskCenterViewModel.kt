@@ -42,12 +42,14 @@ data class TaskConflict(
 data class TaskCenterState(
     val tasks: List<BackgroundTask> = emptyList(),
     val conflict: TaskConflict? = null,
-    val notice: String? = null
+    val notice: String? = null,
+    val dismissedOutdatedKinds: Set<BackgroundTaskKind> = emptySet()
 ) {
     val runningCount: Int get() = tasks.count { it.active }
 
     fun latestOutdated(vararg kinds: BackgroundTaskKind): Boolean =
-        tasks.lastOrNull { it.kind in kinds }?.status == BackgroundTaskStatus.OUTDATED
+        kinds.any { it in dismissedOutdatedKinds } ||
+            tasks.lastOrNull { it.kind in kinds }?.status == BackgroundTaskStatus.OUTDATED
 }
 
 /** Tasks outlive individual tabs but not the Android app process. */
@@ -68,6 +70,7 @@ class TaskCenterViewModel : ViewModel() {
         cancellation[id] = cancel
         val previous = _state.value.tasks
         _state.value = _state.value.copy(
+            dismissedOutdatedKinds = _state.value.dismissedOutdatedKinds - kind,
             tasks = (previous + BackgroundTask(
                 id, kind, scope, title(kind), BackgroundTaskStatus.RUNNING,
                 affectedScopes = affectedScopes, readOnly = readOnly
@@ -179,8 +182,14 @@ class TaskCenterViewModel : ViewModel() {
 
     @Synchronized
     fun dismiss(id: Long) {
-        if (_state.value.tasks.any { it.id == id && it.active }) return
-        _state.value = _state.value.copy(tasks = _state.value.tasks.filter { it.id != id })
+        val item = _state.value.tasks.firstOrNull { it.id == id } ?: return
+        if (item.active) return
+        _state.value = _state.value.copy(
+            tasks = _state.value.tasks.filter { it.id != id },
+            dismissedOutdatedKinds = if (item.status == BackgroundTaskStatus.OUTDATED)
+                _state.value.dismissedOutdatedKinds + item.kind
+                else _state.value.dismissedOutdatedKinds
+        )
     }
 
     @Synchronized
