@@ -86,7 +86,6 @@ class FileAnalysisViewModel(
 
     fun reset() {
         if (_state.value.isDeleting) return
-        if (root != null && !taskCenter.allowScan("Start file analysis", copyTaskScope(root))) return
         verifiedTargets.clear()
         scanGeneration++
         job?.cancel()
@@ -105,6 +104,7 @@ class FileAnalysisViewModel(
 
     fun scan(root: CopyPlace?, kind: AnalysisKind, scope: SearchScope, minimumMiB: Int) {
         if (_state.value.isDeleting) return
+        if (root != null && !taskCenter.allowScan("Start file analysis", copyTaskScope(root))) return
         verifiedTargets.clear()
         scanGeneration++
         val generation = scanGeneration
