@@ -34,6 +34,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import com.meowmeow.filemanager.diagnostics.ErrorOperation
@@ -57,7 +58,8 @@ internal fun ImageReader(
     onFailure: (Throwable, ErrorOperation) -> Unit,
     onExternal: () -> Unit
 ) {
-    val repository = remember { ImageReaderRepositoryForScreen.create() }
+    val context = LocalContext.current
+    val repository = remember(context) { ImageReaderRepository(context.applicationContext) }
     var retry by rememberSaveable(uri.toString()) { mutableIntStateOf(0) }
     val preview by produceState<ImagePreviewState>(
         initialValue = ImagePreviewState.Loading, uri, retry
@@ -162,15 +164,6 @@ internal fun ImageReader(
                 }
             }
         }
-    }
-}
-
-/** Shared decoder instance is scoped to composition and never retains document content. */
-private object ImageReaderRepositoryForScreen {
-    @Composable
-    fun create(): ImageReaderRepository {
-        val context = androidx.compose.ui.platform.LocalContext.current
-        return remember(context) { ImageReaderRepository(context.applicationContext) }
     }
 }
 
