@@ -207,6 +207,9 @@ class DeviceExplorerViewModel(
         )
         taskToken = token
         searchTask.invokeOnCompletion { cause ->
+            if (cause is CancellationException && searchJob === searchTask) {
+                _search.value = FileSearchState(notice = "Search stopped.")
+            }
             taskCenter.complete(
                 token,
                 success = cause == null && _search.value.finished &&

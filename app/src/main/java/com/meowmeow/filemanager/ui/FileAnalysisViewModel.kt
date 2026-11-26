@@ -212,7 +212,12 @@ class FileAnalysisViewModel(
                     reclaimableBytes = prepared.groups.sumOf { it.reclaimableBytes }
                 )
             } catch (_: CancellationException) {
-                // Expected user navigation/cancellation: never log.
+                // Explicit cancellation or permission loss; no error-log entry.
+                if (generation == scanGeneration)
+                    _state.value = FileAnalysisUiState(
+                        kind = kind, scope = scope, thresholdMiB = minimumMiB,
+                        notice = "Scan stopped. No files were changed."
+                    )
             } catch (failure: Exception) {
                 errors.record(
                     ErrorArea.FILE_ANALYSIS, failure,

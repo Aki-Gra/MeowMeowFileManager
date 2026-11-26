@@ -173,14 +173,18 @@ class MainActivity : ComponentActivity() {
                     usingDevice = true
                     device.openRoot()
                     page = Page.FILES
-                } else requestAllFilesAccess()
+                } else if (taskCenter.allowMutation("Change storage permission", null)) {
+                    requestAllFilesAccess()
+                }
             }
             val browseDownloads = {
                 if (allFilesGranted) {
                     usingDevice = true
                     device.openDownloads()
                     page = Page.FILES
-                } else requestAllFilesAccess()
+                } else if (taskCenter.allowMutation("Change storage permission", null)) {
+                    requestAllFilesAccess()
+                }
             }
 
             MeowMeowTheme {
