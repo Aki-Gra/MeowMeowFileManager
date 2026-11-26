@@ -5,6 +5,7 @@ import org.junit.Assert.assertThrows
 import org.junit.Test
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
+import java.io.IOException
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
@@ -28,15 +29,15 @@ class DocumentTextExtractorTest {
         return out.toByteArray()
     }
 
-    @Test fun parsesSmallValidOfficeDocument() {
+    @Test fun drainsSmallArchiveAndRejectsMissingTextPart() {
+        // Runs on the JVM without invoking Android's platform XmlPullParser.
         val docx = archive(
             "metadata.xml" to "<meta/>".toByteArray(),
-            "word/document.xml" to
-                "<w:document xmlns:w=\"urn:word\"><w:body><w:p><w:r><w:t>Hello</w:t></w:r></w:p></w:body></w:document>".toByteArray()
+            "word/styles.xml" to "<styles/>".toByteArray()
         )
-        assertEquals("Hello", DocumentTextExtractor.extractOfficeText(
-            ByteArrayInputStream(docx), ReaderFormat.DOCX
-        ))
+        assertThrows(IOException::class.java) {
+            DocumentTextExtractor.extractOfficeText(ByteArrayInputStream(docx), ReaderFormat.DOCX)
+        }
     }
 
     @Test fun blocksLargeDecompressionInSkippedPart() {
