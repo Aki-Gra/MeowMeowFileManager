@@ -80,3 +80,22 @@
 - [ ] Check diagnostics after a genuine sharing failure: only generic `MM-SHARE-FILE` code appears, no private filename, path, contents or exception message.
 - [ ] In airplane mode, opening the Sharesheet must work. MeowMeow itself must not upload files to any server; only the user's selected destination may transfer files.
 - [ ] Test a small-screen phone, long filenames and dark mode. The Share toolbar button and **Open with…** must remain accessible.
+
+
+## 9 — Open files in MeowMeow from OTHER Android apps
+
+- [ ] Install the latest APK built from this PR's HEAD. Use **disposable** PDF, image, Word, ODT and text files.
+- [ ] From another file manager / Downloads, tap a **PDF** → **Open with**. Confirm MeowMeow appears as one of the compatible apps. Select it and confirm the PDF renders with page navigation and zoom.
+- [ ] Repeat with **JPG/JPEG, PNG, GIF, WebP** and, on supported devices, HEIC/HEIF/AVIF; the existing image viewer and pinch zoom remain available.
+- [ ] Repeat with **TXT, JSON, XML, CSV, Markdown, DOC, DOCX and ODT**. Correct preview type should be selected even if the shared provider's filename has no extension (when it declares a supported MIME type).
+- [ ] Repeat with text-source files such as HTML, YAML, CSS, JavaScript, Python and Kotlin where the source app declares a text MIME type.
+- [ ] **Back** from an externally opened file should return to the source app's file list or message, not open MeowMeow's Files tab or launch an extra copy of the source app.
+- [ ] In the externally opened viewer, **Share** sends the original file, not a screenshot. **Open with…** shows other apps without putting MeowMeow itself back into a self-opening loop.
+- [ ] Cancel an external Open with chooser before selecting MeowMeow. Nothing changes or auto-opens.
+- [ ] Test with MeowMeow's **All files access disabled**. An external app's grantable `content://` URI should still open in MeowMeow. The external flow must not request folder permissions or broad storage access.
+- [ ] Try a revoked/stale URI or corrupted file. Show a generic message or the reader's normal failure UI, without a crash, automatic external handoff, or exposing private paths in error logs.
+- [ ] Test an unsupported ZIP/EXE from another app: MeowMeow should NOT be a general-purpose handler advertised for binary/unknown files.
+- [ ] Test both a normal `content://` document provider and a third-party `FileProvider` where possible. Provider permissions must be temporary read-only.
+- [ ] Recheck normal internal file-opening in Files, Search and Analysis and confirm no regression.
+
+**Android behavior:** App matching is controlled by Android and the sender's MIME type. We register supported, specific MIME types plus `text/*` over `content://`. A provider using only `application/octet-stream` (generic binary) may not list MeowMeow; registering for every binary file would misrepresent its reading capabilities. An HTTP URL is not a grantable local document and is not handled by this feature. The build does **not** silently claim to become the default app.

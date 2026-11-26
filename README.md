@@ -176,3 +176,27 @@ SAF access and actions before merging it into the reader PR. See
 The in-app PDF/text/image viewer has an explicit **Share** action beside **Open with…**. **Files → three-dot menu → Share** also works for regular files in List, Large icons and Thumbnails layouts (including files the reader cannot preview). No folder sharing or automatic sharing is supported.
 
 Sharing launches Android's native Sharesheet with `ACTION_SEND`, `EXTRA_STREAM`, a grantable `content://` URI and temporary read-only permission. Direct shared-storage files are converted through the app's existing FileProvider; Storage Access Framework files retain their provider content URI. Supported MIME types are preserved or inferred from the extension for generic/unknown provider MIME values. **The original file is shared unchanged**, not an extracted text preview, PDF screenshot or image thumbnail. The user chooses a destination; canceling the sheet changes nothing. Share failures use sanitized `MM-SHARE-FILE` diagnostic codes without paths, filenames or exception text. No background upload or new storage/network permissions are added.
+
+
+## Open with MeowMeow from other Android apps
+
+MeowMeow can be offered in Android's **Open with** chooser for `content://` document URIs with MIME types it knows how to preview:
+PDF, DOC/DOCX, ODT; supported JPEG/PNG/WebP/GIF/BMP/HEIC/HEIF/AVIF images;
+all `text/*` text, source/code and Markdown files; JSON, XML, CSV,
+YAML, TOML, JavaScript and similar text formats. Android's chooser, not
+MeowMeow, controls the displayed choices and defaults.
+
+An exported routing activity validates the incoming file and forwards a
+temporary read grant to the **non-exported** ReaderActivity. The router
+finishes immediately; Back from the reader returns to the origin rather
+than launching MeowMeow's main file list. The app does not ask for All files
+access just to read an external `content://` file. Share and Open with
+stay available inside the reader, and the Open with chooser excludes
+MeowMeow itself to prevent an open loop.
+
+**Limits:** Only provider-backed `content://` URIs are registered for security.
+Unsupported formats and generic `application/octet-stream` MIME types
+are not advertised: for those sources, Android may not show MeowMeow even
+if the file's extension could otherwise be read. Browsing an HTTP URL
+directly in MeowMeow is not part of this feature. Refer to
+[external-open QA](docs/ADVANCED_READER_QA.md#9--open-files-in-meowmeow-from-other-android-apps).
