@@ -1,3 +1,20 @@
+// Release credentials are read from the environment. Never commit signing material.
+val releaseKeystorePath = System.getenv("MEOWMEOW_SIGNING_KEYSTORE_PATH")
+val releaseStorePassword = System.getenv("MEOWMEOW_SIGNING_STORE_PASSWORD")
+val releaseKeyAlias = System.getenv("MEOWMEOW_SIGNING_KEY_ALIAS")
+val releaseKeyPassword = System.getenv("MEOWMEOW_SIGNING_KEY_PASSWORD")
+val hasReleaseSigning = listOf(
+    releaseKeystorePath, releaseStorePassword, releaseKeyAlias, releaseKeyPassword
+).all { !it.isNullOrBlank() }
+val requestedReleaseBuild = gradle.startParameter.taskNames.any {
+    it.substringAfterLast(':') in setOf("assembleRelease", "bundleRelease")
+}
+if (requestedReleaseBuild && !hasReleaseSigning) {
+    throw GradleException(
+        "Missing release signing environment variables. See docs/SIGNED_RELEASES.md."
+    )
+}
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.plugin.compose")
@@ -16,8 +33,28 @@ android {
         minSdk = 26
         targetSdk = 36
         versionCode = 3
-        versionName = "0.3.0-reader-preview"
+        versionName = "0.3.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    signingConfigs {
+        if (hasReleaseSigning) {
+            create("meowmeowRelease") {
+                storeFile = file(requireNotNull(releaseKeystorePath))
+                storePassword = releaseStorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+            }
+        }
+    }
+    buildTypes {
+        getByName("release") {
+            isDebuggable = false
+            isMinifyEnabled = false
+            if (hasReleaseSigning) {
+                signingConfig = signingConfigs.getByName("meowmeowRelease")
+            }
+        }
     }
 
     buildFeatures { compose = true }
