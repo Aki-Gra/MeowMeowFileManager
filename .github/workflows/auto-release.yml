@@ -103,10 +103,10 @@ jobs:
     env:
       VERSION_NAME: ${{ needs.build.outputs.version_name }}
       VERSION_CODE: ${{ needs.build.outputs.version_code }}
-      # Pinned from the successfully signed MeowMeow File Manager APK
-      # (run 45998145747). NEVER replace with Pocket Folder Player's key.
-      SIGNER_CERT_SHA256: 01b7aa1b4e7bc0d40964ee48b5db68df563ba8441153afeebfca225e0f42d8ec
-      ENCRYPTED_BACKUP_SHA256: f9f58078aff61df78743a68fe597366d34a2c0c16ce4d799e8a86b03a624e4b1
+      # Public verification pins for the NEW pre-public-rotation signing key.
+      # Generated and restore-tested in run 46013967169; never use Pocket Folder Player's key.
+      SIGNER_CERT_SHA256: 1babc08babd88a6c6aff239ec47947ae8ac50d93a78b1c7f8cff2a9a1e30a104
+      ENCRYPTED_BACKUP_SHA256: ee80770afcaa02d1fde59abcebfb152abeb78eaefe169a55145aa31553246d33
     steps:
       - name: Reject duplicate or downgrade Beta tags before touching secrets
         shell: bash
