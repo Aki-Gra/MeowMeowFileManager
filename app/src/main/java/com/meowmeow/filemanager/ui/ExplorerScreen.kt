@@ -221,46 +221,46 @@ fun ExplorerScreen(
         snackbarHost = { SnackbarHost(snackbar) },
         bottomBar = {
             Box(Modifier.fillMaxWidth().onSizeChanged { onBottomBarHeightChanged(it.height) }) {
-            if (bulkState.stage != BulkStage.OFF) {
-                BulkBottomBar(
-                    state = bulkState,
-                    canPaste = state.hasRoot && state.canCreateFolder && !state.isLoading,
-                    onAction = onBulkAction,
-                    onPasteReview = onBulkPaste,
-                    onDiscard = onBulkDiscard,
-                    onCancel = onBulkCancel
-                )
-            } else if (copyState.sourceName != null) {
-                Surface(tonalElevation = 3.dp) {
-                    Column(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Text("Copy: " + copyState.sourceName,
-                            maxLines = 1, overflow = TextOverflow.Ellipsis,
-                            style = MaterialTheme.typography.titleSmall)
-                        if (copyState.isCopying) {
-                            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                            Text("Copied " + copyState.filesCopied + " file(s) · " +
-                                copyState.foldersCopied + " folder(s)",
-                                style = MaterialTheme.typography.bodySmall)
-                        } else {
-                            Text("Navigate to the destination, then tap Paste here.",
-                                style = MaterialTheme.typography.bodySmall)
-                        }
-                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp),
-                            verticalAlignment = Alignment.CenterVertically) {
-                            Button(
-                                enabled = !copyState.isCopying && state.hasRoot && state.canCreateFolder,
-                                onClick = onPaste
-                            ) { Text("Paste here") }
-                            TextButton(onClick = onCopyCancel) {
-                                Text(if (copyState.isCopying) "Cancel copy" else "Discard")
+                if (bulkState.stage != BulkStage.OFF) {
+                    BulkBottomBar(
+                        state = bulkState,
+                        canPaste = state.hasRoot && state.canCreateFolder && !state.isLoading,
+                        onAction = onBulkAction,
+                        onPasteReview = onBulkPaste,
+                        onDiscard = onBulkDiscard,
+                        onCancel = onBulkCancel
+                    )
+                } else if (copyState.sourceName != null) {
+                    Surface(tonalElevation = 3.dp) {
+                        Column(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text("Copy: " + copyState.sourceName,
+                                maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                style = MaterialTheme.typography.titleSmall)
+                            if (copyState.isCopying) {
+                                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                                Text("Copied " + copyState.filesCopied + " file(s) · " +
+                                    copyState.foldersCopied + " folder(s)",
+                                    style = MaterialTheme.typography.bodySmall)
+                            } else {
+                                Text("Navigate to the destination, then tap Paste here.",
+                                    style = MaterialTheme.typography.bodySmall)
+                            }
+                            Row(horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                verticalAlignment = Alignment.CenterVertically) {
+                                Button(
+                                    enabled = !copyState.isCopying && state.hasRoot && state.canCreateFolder,
+                                    onClick = onPaste
+                                ) { Text("Paste here") }
+                                TextButton(onClick = onCopyCancel) {
+                                    Text(if (copyState.isCopying) "Cancel copy" else "Discard")
+                                }
                             }
                         }
                     }
                 }
-            }
             }
         },
         topBar = {
