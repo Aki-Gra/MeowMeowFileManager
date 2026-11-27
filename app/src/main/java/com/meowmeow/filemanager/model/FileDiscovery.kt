@@ -60,7 +60,8 @@ fun matchesFileSearch(entry: FileEntry, query: String, kind: FileKind): Boolean 
 data class DiscoveryMatch<T>(
     val entry: FileEntry,
     val location: String,
-    val folderTrail: List<T>
+    val folderTrail: List<T>,
+    val target: T? = null
 )
 
 data class DiscoveryOutcome<T>(
@@ -134,7 +135,8 @@ class FileDiscoveryScanner<T>(
                     results.add(DiscoveryMatch(
                         entry,
                         if (node.location.isEmpty()) "Selected scope" else node.location,
-                        if (entry.isDirectory) node.trail + target else node.trail
+                        if (entry.isDirectory) node.trail + target else node.trail,
+                        target
                     ))
                 }
                 if (recursive && entry.isDirectory) {
