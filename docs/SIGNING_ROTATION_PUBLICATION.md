@@ -1,14 +1,8 @@
 # Rotating the release key before making this repository public
 
-Status (2026-11-27): The old encrypted release keystore and checksum were
-deleted from the current **main** tree. The old ciphertext remains in historical
-commits and other refs. The replacement key has **not** yet been generated,
-and GitHub Actions still holds the old signing secrets. **Keep this repository
-private until the old history is cleaned.**
+**Historical runbook:** The replacement signing key was generated and signed Beta publication succeeded on 27 November 2026. The repository is now public. Old Actions runs and artifacts were cleaned; this does not establish that historical Git commits were rewritten. Do not repeat this rotation for routine releases. Older APKs signed with the superseded key generally require uninstalling before installing the current Beta.
 
-There are currently no external users requiring update compatibility, so this
-one-time signing-key reset is intentional. APKs signed with the replacement key
-will generally not install as upgrades over the previous signed Beta.
+The instructions below are retained as historical maintenance guidance, not pending setup steps.
 
 ## No-code option: generate the new signing key entirely on GitHub
 
