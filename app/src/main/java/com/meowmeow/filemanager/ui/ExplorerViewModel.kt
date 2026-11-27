@@ -57,6 +57,7 @@ class ExplorerViewModel(
     val search: StateFlow<FileSearchState> = _search
     private var searchJob: Job? = null
     private val searchRoutes = mutableMapOf<String, List<DocumentFile>>()
+    private val searchPlaces = mutableMapOf<String, CopyPlace>()
 
     init {
         selectionJob = viewModelScope.launch {
@@ -213,6 +214,9 @@ class ExplorerViewModel(
         cancelSearch()
         val startFolder = searchStartFolder(folders.firstOrNull(), folders.lastOrNull(), scope)?.file ?: return
         if (!taskCenter.allowScan("Search selected folder", scopedTaskScope(startFolder))) return
+        val rootKey = folders.firstOrNull()?.file?.uri?.toString() ?: return
+        val prefix = if (startFolder.uri == folders.firstOrNull()?.file?.uri) emptyList()
+            else folders.dropLast(1).map { it.file.uri.toString() }
         var taskToken = -1L
         val searchTask = viewModelScope.launch(start = CoroutineStart.LAZY) {
             _search.value = FileSearchState(isRunning = true)
@@ -233,6 +237,13 @@ class ExplorerViewModel(
             }
             outcome.onSuccess { result ->
                 searchRoutes.clear()
+                searchPlaces.clear()
+                result.matches.forEach { match ->
+                    match.target?.let { target ->
+                        searchPlaces[match.entry.id] = CopyPlace(CopyNode.Scoped(target), rootKey,
+                            prefix + match.folderTrail.map { it.uri.toString() }, match.entry)
+                    }
+                }
                 result.matches.filter { it.entry.isDirectory }.forEach {
                     searchRoutes[it.entry.id] = it.folderTrail
                 }
@@ -274,6 +285,7 @@ class ExplorerViewModel(
         searchJob?.cancel()
         searchJob = null
         searchRoutes.clear()
+        searchPlaces.clear()
         _search.value = FileSearchState()
     }
 
@@ -307,6 +319,37 @@ class ExplorerViewModel(
             CopyNode.Scoped(folder), root.uri.toString(),
             folders.map { it.file.uri.toString() }
         )
+    }
+
+    private fun searchPlace(entry: FileEntry): CopyPlace? =
+        searchPlaces[entry.id]?.takeIf { it.expectedEntry == entry &&
+            it.rootKey == folders.firstOrNull()?.file?.uri?.toString() &&
+            !taskCenter.state.value.latestOutdated(BackgroundTaskKind.FOLDER_SEARCH) }
+
+    fun searchSelection(entry: FileEntry): CopyPlace? = searchPlace(entry)
+
+    fun renameSearch(entry: FileEntry, name: String) {
+        val place = searchPlace(entry) ?: return staleSearch()
+        val target = (place.node as CopyNode.Scoped).file
+        val parent = target.parentFile ?: return staleSearch()
+        mutate("Rename search item", ErrorOperation.SAF_RENAME, scopedTaskScope(parent)) {
+            repository.validateSearchEntry(target, entry)
+            repository.rename(target, name)
+        }
+    }
+
+    fun deleteSearch(entry: FileEntry) {
+        val place = searchPlace(entry) ?: return staleSearch()
+        val target = (place.node as CopyNode.Scoped).file
+        mutate("Delete search item", ErrorOperation.SAF_DELETE, scopedTaskScope(target)) {
+            repository.validateSearchEntry(target, entry)
+            check(!target.isDirectory || target.listFiles().isEmpty()) { "Folder is not empty. Use bulk deletion to review its contents." }
+            repository.delete(target)
+        }
+    }
+
+    private fun staleSearch() {
+        _state.value = _state.value.copy(errorMessage = "Search result is outdated. Search again.")
     }
 
     fun copySelection(entry: FileEntry): CopyPlace? {

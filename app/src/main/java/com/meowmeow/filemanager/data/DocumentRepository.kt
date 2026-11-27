@@ -54,6 +54,15 @@ class DocumentRepository(private val context: Context) {
             ) to child
         }
 
+    fun validateSearchEntry(file: DocumentFile, entry: FileEntry) {
+        check(file.exists() && file.canRead() && file.uri.toString() == entry.id &&
+            file.name == entry.name && file.isDirectory == entry.isDirectory &&
+            (entry.isDirectory || file.length() == entry.sizeBytes) &&
+            (entry.modifiedAtMillis <= 0 || file.lastModified() == entry.modifiedAtMillis)) {
+            "Search result changed. Search again."
+        }
+    }
+
     fun createFolder(parent: DocumentFile, name: String) {
         validateRequestedName(name)
         check(parent.canWrite()) { "This folder is read-only" }

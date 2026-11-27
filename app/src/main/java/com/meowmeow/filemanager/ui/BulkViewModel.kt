@@ -217,11 +217,13 @@ class BulkViewModel(
                             )
                         },
                         validateSelection = { source ->
-                            val entry = chosen.values.firstOrNull {
+                            val selected = chosen.values.firstOrNull {
                                 it.first.node == source
-                            }?.second ?: throw ExpectedFileOperationException(
+                            } ?: throw ExpectedFileOperationException(
                                 "Selection is no longer available."
                             )
+                            operations.validateSearchSource(selected.first)
+                            val entry = selected.second
                             if (operations.isDirectory(source) != entry.isDirectory)
                                 throw ExpectedFileOperationException(
                                     "Selected item changed. Select it again."

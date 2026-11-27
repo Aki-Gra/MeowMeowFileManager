@@ -96,6 +96,7 @@ class CopyViewModel(
         val copyTask = viewModelScope.launch(start = CoroutineStart.LAZY) {
             try {
                 val result = withContext(Dispatchers.IO) {
+                    copyOps.validateSearchSource(source)
                     val isFolder = copyOps.isDirectory(source.node)
                     validateCopyDestination(source, destination, isFolder)
                     SafeCopy(copyOps).perform(
