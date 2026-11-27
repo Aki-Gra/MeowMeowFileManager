@@ -10,6 +10,7 @@ restore-test, unsigned APK build, zipalign, apksigner and verification process.
 |---|---|
 | `SIGNING_STORE_PASSWORD` | Unlocks the permanent PKCS12 signing key |
 | `SIGNING_BACKUP_PASSPHRASE` | Encrypts/decrypts its backup |
+| `SIGNING_ENCRYPTED_KEYSTORE_BASE64` | Optional: Base64 of the existing MeowMeow encrypted backup, used before the checked-in encrypted backup |
 
 Keep these two passwords different and preserve copies securely outside GitHub.
 Never paste secret values into chat, source code, pull requests or build logs.
@@ -37,12 +38,33 @@ of branch protection or a concurrent commit, preserve the encrypted
 backup artifact and do NOT regenerate the signing identity. The encrypted
 key will have to be installed using an authorized path before signing.
 
+### Existing signing key and optional backup secret
+
+The permanent signing key has **already been generated** by a successful
+MeowMeow File Manager key initialization on 27 November 2026. The encrypted
+backup and its SHA-256 checksum are stored in `main`. **Do not run
+initialization again.**
+
+The optional `SIGNING_ENCRYPTED_KEYSTORE_BASE64` secret must contain
+Base64 of **that exact encrypted MeowMeow backup** (not the plaintext
+PKCS12 file and not Pocket Folder Player's backup). The signed-release
+workflow prefers this secret if supplied. It verifies the decoded encrypted
+file's SHA-256 against `signing/release-keystore.sha256` **before**
+building or signing. If the secret is absent, it uses the checked-in encrypted
+backup; if the secret is present but does not match, it **fails closed**,
+rather than silently switching to another key or generating a replacement.
+
+Never paste the secret value into chat or logs. Preserve an independent,
+secure copy of MeowMeow's encrypted backup.
+
 ## 2. Build a signed test APK
 
 On GitHub, open **Actions → Signed Android release → Run workflow**.
 Select **main** and leave `publish=false`. The workflow will:
 
 - Validate the committed encrypted backup's SHA-256 checksum.
+- Prefer the optional encrypted-backup secret if present, but only if its
+  SHA-256 matches the existing MeowMeow key. Reject mismatches without signing.
 - Run JVM unit tests and build an **unsigned** Android release APK.
 - Restore and validate the same permanent signing keystore.
 - Align the unsigned APK using `zipalign`, then sign using `apksigner`.

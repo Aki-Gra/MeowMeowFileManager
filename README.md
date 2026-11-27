@@ -267,3 +267,7 @@ a signed test artifact, and then publish versioned GitHub Releases.
 See [release setup and signing requirements](docs/SIGNED_RELEASES.md).
 
 The repo is private, so Release downloads require repository access.
+
+The optional `SIGNING_ENCRYPTED_KEYSTORE_BASE64` secret is supported for
+recovering the *same* encrypted backup, with its SHA-256 pinned to the
+already-initialized MeowMeow signing identity. A mismatched backup is rejected.
