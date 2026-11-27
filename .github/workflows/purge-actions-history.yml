@@ -1,0 +1,97 @@
+name: Purge old Actions runs and artifacts (one-time manual)
+
+# Intended for the pre-public cleanup only. Does not change Git commit history.
+# Never executes on pushes or PRs, and is disabled if repository is public.
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: "Type BACKUP_SAVED_DELETE_HISTORY only AFTER saving the new encrypted signing-key backup outside GitHub"
+        type: string
+        required: true
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: filemanager-actions-history-purge
+  cancel-in-progress: false
+
+jobs:
+  purge:
+    if: github.ref == 'refs/heads/main' && github.event.repository.private == true && inputs.confirmation == 'BACKUP_SAVED_DELETE_HISTORY'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Confirm prerequisites
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Starting irreversible removal of old workflow runs and their artifacts."
+          echo "The new signing-key backup must already be saved securely outside GitHub."
+          echo "This does NOT remove any contents of Git commits, Git tags or GitHub releases."
+          gh --version
+
+      - name: Delete all stored Actions artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          IDS="$RUNNER_TEMP/artifact-ids"
+          gh api --paginate "repos/$GITHUB_REPOSITORY/actions/artifacts?per_page=100" \
+            --jq '.artifacts[].id' > "$IDS"
+          total=$(wc -l < "$IDS")
+          removed=0
+          failed=0
+          while IFS= read -r id; do
+            [[ -n "$id" ]] || continue
+            if gh api -X DELETE "repos/$GITHUB_REPOSITORY/actions/artifacts/$id" > /dev/null; then
+              removed=$((removed + 1))
+            else
+              failed=$((failed + 1))
+              echo "::warning::Failed to delete artifact ID $id"
+            fi
+          done < "$IDS"
+          echo "Artifacts: found $total, deleted $removed, failed $failed"
+          if (( failed > 0 )); then
+            echo "::error::Some Actions artifacts could not be deleted."
+            exit 1
+          fi
+
+      - name: Delete all previous completed workflow runs
+        shell: bash
+        run: |
+          set -euo pipefail
+          IDS="$RUNNER_TEMP/completed-run-ids"
+          gh api --paginate "repos/$GITHUB_REPOSITORY/actions/runs?per_page=100" \
+            --jq '.workflow_runs[] | select(.status == "completed") | .id' > "$IDS"
+          total=$(wc -l < "$IDS")
+          removed=0
+          failed=0
+          while IFS= read -r id; do
+            [[ -n "$id" ]] || continue
+            [[ "$id" != "$GITHUB_RUN_ID" ]] || continue
+            if gh api -X DELETE "repos/$GITHUB_REPOSITORY/actions/runs/$id" > /dev/null; then
+              removed=$((removed + 1))
+            else
+              failed=$((failed + 1))
+              echo "::warning::Failed to delete completed workflow run ID $id"
+            fi
+          done < "$IDS"
+          echo "Completed runs: found $total, deleted $removed, failed $failed"
+          {
+            echo "### Actions history cleanup"
+            echo "Artifacts and older completed workflow runs were removed."
+            echo "This cleanup run itself remains and can be deleted once complete."
+            echo "Any new CI or release runs triggered later will also appear."
+            echo "The Git commit history was NOT rewritten or cleaned."
+            echo ""
+            echo "Completed runs removed: $removed"
+            echo "Completed runs failed: $failed"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if (( failed > 0 )); then
+            echo "::error::Some workflow runs could not be deleted."
+            exit 1
+          fi
