@@ -35,6 +35,25 @@ jobs:
           echo "This does NOT remove any contents of Git commits, Git tags or GitHub releases."
           gh --version
 
+      - name: Ensure older workflow runs are finished before deletion
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in {1..30}; do
+            ACTIVE="$RUNNER_TEMP/other-active-runs"
+            gh api --paginate "repos/$GITHUB_REPOSITORY/actions/runs?per_page=100" \
+              --jq '.workflow_runs[] | select(.status != "completed") | .id' \
+              | grep -v -x "$GITHUB_RUN_ID" > "$ACTIVE" || true
+            if [[ ! -s "$ACTIVE" ]]; then
+              echo "No other running or queued workflows remain."
+              exit 0
+            fi
+            echo "Waiting for older builds to finish before deleting run history."
+            sleep 20
+          done
+          echo "::error::Other workflows are still active; rerun cleanup when they finish."
+          exit 1
+
       - name: Delete all stored Actions artifacts
         shell: bash
         run: |
