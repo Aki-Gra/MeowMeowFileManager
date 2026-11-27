@@ -98,6 +98,7 @@ fun BulkBottomBar(
                     )
                     state.notice?.let { Text(it, color = MaterialTheme.colorScheme.error,
                         style = MaterialTheme.typography.bodySmall) }
+                    Column(Modifier.heightIn(max = 120.dp).verticalScroll(rememberScrollState())) {
                     p?.results?.filter {
                         it.status != com.meowmeow.filemanager.model.BulkStatus.SUCCESS ||
                             it.detail == "Replaced existing file" ||
@@ -107,7 +108,8 @@ fun BulkBottomBar(
                             Text(result.name + ": " + result.detail,
                                 maxLines = 2, style = MaterialTheme.typography.bodySmall)
                         }
-                    TextButton(onClick = onDiscard) { Text("Done") }
+                    }
+                    Button(onClick = onDiscard) { Text("Done") }
                 }
                 else -> {}
             }
