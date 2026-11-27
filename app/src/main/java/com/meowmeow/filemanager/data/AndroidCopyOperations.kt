@@ -5,6 +5,7 @@ import android.provider.DocumentsContract
 import android.webkit.MimeTypeMap
 import androidx.documentfile.provider.DocumentFile
 import com.meowmeow.filemanager.model.BulkOperations
+import com.meowmeow.filemanager.model.FileEntry
 import com.meowmeow.filemanager.model.ExpectedFileOperationException
 import com.meowmeow.filemanager.model.rejectExistingName
 import java.io.File
@@ -27,7 +28,8 @@ sealed class CopyNode {
 data class CopyPlace(
     val node: CopyNode,
     val rootKey: String,
-    val ancestors: List<String>
+    val ancestors: List<String>,
+    val expectedEntry: FileEntry? = null
 ) {
     val identity: String get() = when (node) {
         is CopyNode.Device -> node.file.path
@@ -38,6 +40,15 @@ data class CopyPlace(
 class AndroidCopyOperations(context: Context) : BulkOperations<CopyNode> {
     private val resolver = context.applicationContext.contentResolver
     private val local = LocalFileRepository()
+    private val documents = DocumentRepository(context.applicationContext)
+
+    fun validateSearchSource(place: CopyPlace) {
+        val entry = place.expectedEntry ?: return
+        when (val node = place.node) {
+            is CopyNode.Device -> local.validateSearchEntry(node.file, entry)
+            is CopyNode.Scoped -> documents.validateSearchEntry(node.file, entry)
+        }
+    }
 
     private fun checked(n: CopyNode.Device): File = local.checkedForCopy(n.file)
     private fun doc(n: CopyNode.Scoped): DocumentFile =
