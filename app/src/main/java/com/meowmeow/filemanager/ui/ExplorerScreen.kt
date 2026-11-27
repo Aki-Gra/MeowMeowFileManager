@@ -306,7 +306,7 @@ fun ExplorerScreen(
                                 contentDescription = if (searchVisible) "Close search" else "Search files")
                         }
                     }
-                    if (state.hasRoot && (!showingSearch || (searchState.finished && !searchOutdated)) &&
+                    if (state.hasRoot && copyState.sourceName == null && (!showingSearch || (searchState.finished && !searchOutdated)) &&
                         (bulkState.stage == BulkStage.OFF || bulkState.stage == BulkStage.SELECTING)) {
                         IconButton(
                             onClick = {
@@ -373,7 +373,8 @@ fun ExplorerScreen(
                 ) {
                     OutlinedTextField(
                         value = searchQuery,
-                        onValueChange = { searchQuery = it; onCancelSearch() },
+                        onValueChange = { searchQuery = it; onBulkLeave(); onCancelSearch() },
+                        enabled = bulkState.stage == BulkStage.OFF,
                         label = { Text("Name contains (optional)") },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true
@@ -386,6 +387,7 @@ fun ExplorerScreen(
                         Box {
                             AssistChip(
                                 onClick = { typeMenu = true },
+                                enabled = bulkState.stage == BulkStage.OFF,
                                 label = { Text(searchKind.label) }
                             )
                             DropdownMenu(
@@ -409,6 +411,7 @@ fun ExplorerScreen(
                     Box {
                         AssistChip(
                             onClick = { scopeMenu = true },
+                            enabled = bulkState.stage == BulkStage.OFF,
                             label = {
                                 Text(
                                     when (searchScope) {
@@ -466,7 +469,7 @@ fun ExplorerScreen(
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         Button(
-                            enabled = !searchState.isRunning,
+                            enabled = !searchState.isRunning && bulkState.stage == BulkStage.OFF,
                             onClick = { onSearch(searchQuery, searchKind, searchScope) }
                         ) { Text("Find files") }
                         if (searchState.isRunning) {
