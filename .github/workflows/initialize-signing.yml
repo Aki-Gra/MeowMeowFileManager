@@ -1,0 +1,130 @@
+name: Initialize Android release signing
+
+# Manual one-time action only. Never run on a PR, push, or tag.
+# Stores only ciphertext and checksum directly on main; no PR.
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: 'Type GENERATE_NEW_SIGNING_KEY to create the permanent identity'
+        type: string
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: meowmeow-filemanager-key-bootstrap
+  cancel-in-progress: false
+
+jobs:
+  generate-encrypted-key:
+    # A fresh key MUST NOT be created from an unreviewed branch.
+    if: github.ref == 'refs/heads/main' && inputs.confirmation == 'GENERATE_NEW_SIGNING_KEY'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out trusted main
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Prevent accidental signing identity replacement
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -e signing/release-keystore.p12.gpg || -e signing/release-keystore.sha256 ]]; then
+            echo "::error::A permanent encrypted signing key already exists. Never replace it."
+            exit 1
+          fi
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Generate, encrypt, restore and verify the permanent keystore
+        shell: bash
+        env:
+          MM_STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
+          MM_BACKUP_PASSPHRASE: ${{ secrets.SIGNING_BACKUP_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          umask 077
+          if [[ ${#MM_STORE_PASSWORD} -lt 16 ]]; then
+            echo "::error::SIGNING_STORE_PASSWORD must be at least 16 characters."
+            exit 1
+          fi
+          if [[ ${#MM_BACKUP_PASSPHRASE} -lt 20 ]]; then
+            echo "::error::SIGNING_BACKUP_PASSPHRASE must be at least 20 characters."
+            exit 1
+          fi
+          if [[ "$MM_STORE_PASSWORD" == "$MM_BACKUP_PASSPHRASE" ]]; then
+            echo "::error::The two signing passwords must be different."
+            exit 1
+          fi
+          if [[ "$MM_BACKUP_PASSPHRASE" == *$'\n'* ]]; then
+            echo "::error::The backup passphrase must not contain newlines."
+            exit 1
+          fi
+          KEYSTORE="$RUNNER_TEMP/meowmeow-filemanager-release.p12"
+          RESTORED="$RUNNER_TEMP/meowmeow-filemanager-restore-check.p12"
+          ENCRYPTED="$GITHUB_WORKSPACE/signing/release-keystore.p12.gpg"
+          trap 'rm -f "$KEYSTORE" "$RESTORED"' EXIT
+          mkdir -p signing
+
+          keytool -genkeypair -noprompt \
+            -alias meowmeow-release \
+            -keyalg RSA -keysize 3072 -validity 10000 \
+            -storetype PKCS12 -keystore "$KEYSTORE" \
+            -dname "CN=MeowMeow File Manager, OU=Android, O=MeowMeow" \
+            -storepass:env MM_STORE_PASSWORD -keypass:env MM_STORE_PASSWORD
+
+          exec 3<<<"$MM_BACKUP_PASSPHRASE"
+          gpg --batch --yes --pinentry-mode loopback \
+            --symmetric --cipher-algo AES256 \
+            --s2k-mode 3 --s2k-digest-algo SHA512 --s2k-count 65011712 \
+            --passphrase-fd 3 --output "$ENCRYPTED" "$KEYSTORE"
+          exec 3<&-
+
+          exec 3<<<"$MM_BACKUP_PASSPHRASE"
+          gpg --batch --yes --pinentry-mode loopback \
+            --decrypt --passphrase-fd 3 --output "$RESTORED" "$ENCRYPTED"
+          exec 3<&-
+          cmp -s "$KEYSTORE" "$RESTORED"
+          keytool -list -alias meowmeow-release -storetype PKCS12 \
+            -keystore "$RESTORED" -storepass:env MM_STORE_PASSWORD >/dev/null
+
+          sha256sum signing/release-keystore.p12.gpg > signing/release-keystore.sha256
+          sha256sum --check --status signing/release-keystore.sha256
+          echo "Encrypted signing key generated and restoration verified. Never generate another."
+
+      - name: Remove unencrypted temporary files
+        if: always()
+        shell: bash
+        run: rm -f "$RUNNER_TEMP/meowmeow-filemanager-release.p12" "$RUNNER_TEMP/meowmeow-filemanager-restore-check.p12"
+
+      - name: Downloadable backup of encrypted key (expires in seven days)
+        uses: actions/upload-artifact@v7
+        with:
+          name: MeowMeowFileManager-ENCRYPTED-Signing-Backup
+          path: signing/release-keystore.p12.gpg
+          archive: false
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Save encrypted signing key directly to main
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add signing/release-keystore.p12.gpg signing/release-keystore.sha256
+          git -c user.name='github-actions[bot]' \
+            -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+            commit -m "build(signing): store encrypted permanent signing key"
+          # Ordinary non-forced push. If main is protected or changed,
+          # the operation stops rather than silently replacing history.
+          if ! git push origin HEAD:refs/heads/main; then
+            echo "::error::Could not save encrypted key to main. Download and preserve the backup from this run. Do NOT regenerate a different signing identity."
+            exit 1
+          fi
+          echo "::notice::Encrypted permanent signing key saved in main."
