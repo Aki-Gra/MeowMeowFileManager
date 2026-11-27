@@ -1,5 +1,12 @@
 # Signed APK and GitHub Releases
 
+> **Superseded for the pre-public reset (27 November 2026).** The former manual
+> signing workflows are archived and cannot be run. The original tracked
+> encrypted backup has been deleted from main, but still exists in history.
+> A new release key has NOT been installed yet; follow
+> [Signing rotation and public release preparation](SIGNING_ROTATION_PUBLICATION.md)
+> rather than the historical instructions below.
+
 MeowMeow File Manager uses a dedicated permanent signing identity.
 The manual-only workflows follow Pocket Folder Player's verified key generation,
 restore-test, unsigned APK build, zipalign, apksigner and verification process.
