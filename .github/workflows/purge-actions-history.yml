@@ -95,3 +95,21 @@ jobs:
             echo "::error::Some workflow runs could not be deleted."
             exit 1
           fi
+
+      - name: Trigger a fresh signed Beta release on main
+        shell: bash
+        run: |
+          set -euo pipefail
+          # workflow_dispatch is allowed to start another GitHub Actions workflow
+          # using the repository's scoped GITHUB_TOKEN.
+          gh api --method POST \
+            "repos/$GITHUB_REPOSITORY/actions/workflows/auto-release.yml/dispatches" \
+            -f ref=main > /dev/null
+          {
+            echo ""
+            echo "### Fresh signed release requested"
+            echo "Triggered auto-release.yml on main after history cleanup."
+            echo "A new signed Beta is published only if tests, lint,"
+            echo "new backup SHA-256 and certificate verification all pass."
+            echo "Follow the Auto-publish signed MeowMeow File Manager Beta workflow."
+          } >> "$GITHUB_STEP_SUMMARY"
