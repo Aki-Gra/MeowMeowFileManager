@@ -41,6 +41,7 @@ android {
         if (hasReleaseSigning) {
             create("meowmeowRelease") {
                 storeFile = file(requireNotNull(releaseKeystorePath))
+                storeType = "pkcs12"
                 storePassword = releaseStorePassword
                 keyAlias = releaseKeyAlias
                 keyPassword = releaseKeyPassword
