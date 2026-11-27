@@ -41,9 +41,10 @@ jobs:
           set -euo pipefail
           for attempt in {1..30}; do
             ACTIVE="$RUNNER_TEMP/other-active-runs"
+            ALL_ACTIVE="$RUNNER_TEMP/all-active-runs"
             gh api --paginate "repos/$GITHUB_REPOSITORY/actions/runs?per_page=100" \
-              --jq '.workflow_runs[] | select(.status != "completed") | .id' \
-              | grep -v -x "$GITHUB_RUN_ID" > "$ACTIVE" || true
+              --jq '.workflow_runs[] | select(.status != "completed") | .id' > "$ALL_ACTIVE"
+            grep -v -x "$GITHUB_RUN_ID" "$ALL_ACTIVE" > "$ACTIVE" || true
             if [[ ! -s "$ACTIVE" ]]; then
               echo "No other running or queued workflows remain."
               exit 0
