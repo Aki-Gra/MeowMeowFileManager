@@ -1,0 +1,130 @@
+name: Rotate Android signing key (manual, private repository)
+
+# One-time, click-only signing-key reset before public launch.
+# NEVER runs on push or pull requests. No source code or key is committed.
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: 'Type ROTATE_SIGNING_KEY to acknowledge that older APKs will not update in place'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: meowmeow-filemanager-signing-rotation
+  cancel-in-progress: false
+
+jobs:
+  generate-new-key:
+    if: github.ref == 'refs/heads/main' && github.event.repository.private == true && inputs.confirmation == 'ROTATE_SIGNING_KEY'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Set up Java 17 for keytool
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Generate and restore-test a new encrypted signing key
+        shell: bash
+        env:
+          MM_STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
+          MM_BACKUP_PASSPHRASE: ${{ secrets.SIGNING_BACKUP_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          umask 077
+
+          if (( ${#MM_STORE_PASSWORD} < 16 || ${#MM_BACKUP_PASSPHRASE} < 20 )); then
+            echo "::error::Existing two GitHub Actions passwords must have minimum lengths 16 and 20."
+            exit 1
+          fi
+          if [[ "$MM_STORE_PASSWORD" == "$MM_BACKUP_PASSPHRASE" ]]; then
+            echo "::error::Use different passwords for the keystore and encrypted backup."
+            exit 1
+          fi
+          if [[ "$MM_BACKUP_PASSPHRASE" == *$'\n'* ]]; then
+            echo "::error::Backup passphrase cannot contain a newline."
+            exit 1
+          fi
+
+          # Never store or upload an unencrypted .p12.
+          KEYSTORE="$RUNNER_TEMP/filemanager-new-release.p12"
+          RESTORED="$RUNNER_TEMP/filemanager-new-restore-check.p12"
+          OUT="$RUNNER_TEMP/filemanager-new-encrypted-output"
+          mkdir -m 700 "$OUT"
+          ENCRYPTED="$OUT/release-keystore.p12.gpg"
+          trap 'rm -f "$KEYSTORE" "$RESTORED"' EXIT
+
+          keytool -genkeypair -noprompt \
+            -alias meowmeow-release \
+            -keyalg RSA -keysize 3072 -validity 10000 \
+            -storetype PKCS12 -keystore "$KEYSTORE" \
+            -dname "CN=MeowMeow File Manager, OU=Android, O=MeowMeow" \
+            -storepass:env MM_STORE_PASSWORD -keypass:env MM_STORE_PASSWORD
+
+          gpg --batch --yes --pinentry-mode loopback \
+            --symmetric --cipher-algo AES256 \
+            --s2k-mode 3 --s2k-digest-algo SHA512 --s2k-count 65011712 \
+            --passphrase-fd 3 --output "$ENCRYPTED" "$KEYSTORE" \
+            3<<<"$MM_BACKUP_PASSPHRASE"
+
+          gpg --batch --yes --pinentry-mode loopback \
+            --decrypt --passphrase-fd 3 --output "$RESTORED" "$ENCRYPTED" \
+            3<<<"$MM_BACKUP_PASSPHRASE"
+          cmp -s "$KEYSTORE" "$RESTORED"
+          keytool -list -alias meowmeow-release -storetype PKCS12 \
+            -keystore "$RESTORED" -storepass:env MM_STORE_PASSWORD >/dev/null
+
+          # The certificate and encrypted file digests are public verifiers.
+          CERT_SHA256="$(keytool -exportcert -rfc -alias meowmeow-release \
+            -storetype PKCS12 -keystore "$RESTORED" \
+            -storepass:env MM_STORE_PASSWORD \
+            | openssl x509 -inform PEM -fingerprint -sha256 -noout \
+            | sed -n 's/^.*=//p' | tr -d ':' | tr '[:upper:]' '[:lower:]')"
+          BACKUP_SHA256="$(sha256sum "$ENCRYPTED" | cut -d ' ' -f 1)"
+          [[ "$CERT_SHA256" =~ ^[a-f0-9]{64}$ ]]
+          [[ "$BACKUP_SHA256" =~ ^[a-f0-9]{64}$ ]]
+
+          # The base64 text contains encrypted bytes, NOT the private plaintext key.
+          base64 -w 0 "$ENCRYPTED" > "$OUT/COPY-TO-SIGNING_ENCRYPTED_KEYSTORE_BASE64.txt"
+          printf '\n' >> "$OUT/COPY-TO-SIGNING_ENCRYPTED_KEYSTORE_BASE64.txt"
+          printf 'SIGNER_CERT_SHA256=%s\nENCRYPTED_BACKUP_SHA256=%s\n' \
+            "$CERT_SHA256" "$BACKUP_SHA256" > "$OUT/PUBLIC-VERIFICATION-HASHES.txt"
+          chmod 600 "$OUT"/*
+
+          {
+            echo '### New encrypted signing key prepared'
+            echo ''
+            echo 'Download the New-FileManager-Encrypted-Signing-Key artifact.'
+            echo 'Open COPY-TO-SIGNING_ENCRYPTED_KEYSTORE_BASE64.txt and copy its'
+            echo 'entire line into the GitHub Actions repository secret'
+            echo 'SIGNING_ENCRYPTED_KEYSTORE_BASE64 (replace the old value).'
+            echo ''
+            echo 'Retain release-keystore.p12.gpg securely outside the repository.'
+            echo 'Do NOT publish the repository yet: the previous encrypted key'
+            echo 'still exists in Git history and other references.'
+            echo ''
+            echo "Public certificate SHA-256: $CERT_SHA256"
+            echo "Encrypted-backup SHA-256: $BACKUP_SHA256"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload encrypted key and public verification hashes
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: New-FileManager-Encrypted-Signing-Key
+          path: ${{ runner.temp }}/filemanager-new-encrypted-output/
+          archive: true
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+      - name: Delete temporary unencrypted keystores
+        if: always()
+        shell: bash
+        run: |
+          rm -f "$RUNNER_TEMP/filemanager-new-release.p12" \
+                "$RUNNER_TEMP/filemanager-new-restore-check.p12"
