@@ -1,11 +1,14 @@
 # Automatic signed Beta releases
 
-> **Signing-identity rotation in progress (27 November 2026).** The original
-> encrypted backup and checksum were removed from main. The active automatic
-> release workflow still pins the OLD signing identity and uses the OLD Actions
-> secrets until they are replaced. Do not trigger a new release until rotation
-> is complete. See [Signing rotation and public release preparation](SIGNING_ROTATION_PUBLICATION.md).
-> Keep this repository private while the old history is being assessed.
+> **Signing identity rotated before public launch (27 November 2026).**
+> A new keystore was generated and its encrypted backup restore-tested in
+> [GitHub Actions run 46013967169](https://github.com/Aki-Gra/MeowMeowFileManager/actions/runs/46013967169).
+> The release workflow now pins the replacement certificate and backup hashes.
+> The new encrypted-backup GitHub secret must match these pins; this is only
+> proven by running a new signed-release build. The original encrypted backup
+> has been deleted from the main tree but is still in Git history.
+> Keep the repository private until old references are cleaned or a fresh
+> history is used. See [the rotation/publication guide](SIGNING_ROTATION_PUBLICATION.md).
 
 MeowMeow File Manager automatically creates a signed **Beta GitHub Release**
 when application source or build configuration changes on the trusted
@@ -20,9 +23,9 @@ Pull requests never access signing secrets.
 - `SIGNING_ENCRYPTED_KEYSTORE_BASE64` — Base64 of the encrypted **File
   Manager** backup (not Pocket Folder Player's and not plaintext keystore).
 
-The permanent File Manager signing key was created on 27 November 2026.
-**Never regenerate it.** The automatic release job pins both the original
-encrypted-backup SHA-256 and its public signing-certificate SHA-256.
+The replacement File Manager signing key was generated on 27 November 2026.
+**Do not regenerate it again.** The automatic release job pins the NEW
+encrypted-backup SHA-256 and public signing-certificate SHA-256.
 A mismatch stops signing and publishing.
 
 ## Two-job isolated pipeline
@@ -55,9 +58,10 @@ version-code base and existing tags. Never rerun an old run to publish
 an update; use a fresh run. A full major/minor version switch requires
 updating this workflow's prefix and version/tag guards deliberately.
 
-Each APK retains `com.meowmeow.filemanager` and the same permanent
-signing certificate, so later releases with a larger Android versionCode
-can update previous release-signed installations. Existing debug-signed
+Each subsequent APK must retain `com.meowmeow.filemanager` and the newly
+rotated signing certificate. New releases with larger Android versionCodes
+can update APKs signed with this new key. Older APKs signed before the
+pre-public key rotation generally require uninstalling first. Existing debug-signed
 builds may require a one-time uninstall.
 
 **Private repository:** GitHub Release assets are available only to
@@ -69,10 +73,11 @@ phones. No Play Store publishing or in-app update mechanism is included.
 
 The former one-time key generator and old manual signed publisher are
 archived as inert `.yml.disabled` files under `docs/workflow-archive/`.
-They are not runnable actions. Keep at least two independently controlled,
-encrypted copies of the original signing-key backup, and protect both
-passwords. Existing encrypted backup files in Git history are not
-plaintext private keys; avoid changing the established signing identity.
+The pre-public key rotation workflow is manual-only and produces an
+**encrypted artifact**, not a tracked signing file.
+They are not runnable actions. Keep secure independent encrypted backups of the new signing identity and
+protect both passwords. Old encrypted backups remain in historical Git
+commits; remove that history before changing repository visibility.
 
 The separate debug workflow remains available for testing and PRs.
 The automatic release pipeline requires Android lint to pass. It is
