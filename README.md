@@ -271,3 +271,12 @@ The repo is private, so Release downloads require repository access.
 The optional `SIGNING_ENCRYPTED_KEYSTORE_BASE64` secret is supported for
 recovering the *same* encrypted backup, with its SHA-256 pinned to the
 already-initialized MeowMeow signing identity. A mismatched backup is rejected.
+
+## Automatic signed Beta releases
+
+Application or build changes on `main` trigger a two-job signing workflow:
+unit tests, Android lint and unsigned APK compilation run without secrets;
+a separate signing job checks the permanent MeowMeow certificate and
+publishes a versioned GitHub Beta Release with an APK and SHA-256 checksum.
+The repo remains private, so assets require repository access. See
+[automatic release guidance](docs/AUTO_RELEASES.md).

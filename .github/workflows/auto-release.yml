@@ -1,0 +1,255 @@
+name: Auto-publish signed MeowMeow File Manager Beta
+
+# App-code changes on trusted main automatically publish the next Beta APK.
+# Docs, workflow-only changes and pull requests never run release signing.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'app/**'
+      - 'build.gradle.kts'
+      - 'settings.gradle.kts'
+      - 'gradle.properties'
+      - 'gradle/**'
+      - 'gradlew'
+      - 'gradlew.bat'
+  workflow_dispatch:
+
+concurrency:
+  group: meowmeow-filemanager-auto-release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read
+    outputs:
+      version_name: ${{ steps.version.outputs.version_name }}
+      version_code: ${{ steps.version.outputs.version_code }}
+    steps:
+      - name: Checkout main application source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Check application identity and assign upgrade-safe Beta version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fq 'applicationId = "com.meowmeow.filemanager"' app/build.gradle.kts
+          grep -Fq 'releaseVersionCode' app/build.gradle.kts
+          grep -Fq 'releaseVersionName' app/build.gradle.kts
+          # The existing signed v0.3.0 test APK has Android versionCode=3.
+          # Future auto releases start above it, even when this workflow's
+          # run counter initially equals 1.
+          CODE=$((3000 + GITHUB_RUN_NUMBER))
+          NAME="0.3.$GITHUB_RUN_NUMBER"
+          echo "version_code=$CODE" >> "$GITHUB_OUTPUT"
+          echo "version_name=$NAME" >> "$GITHUB_OUTPUT"
+          echo "Building $NAME (Android versionCode $CODE) from $GITHUB_SHA"
+
+      - name: Set up Java 17
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDKMANAGER=$(find "$ANDROID_HOME/cmdline-tools" -path '*/bin/sdkmanager' -type f | sort -V | tail -n 1)
+          test -n "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" 'platforms;android-37.0' 'build-tools;36.0.0'
+
+      - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6
+
+      - name: Tests, Android lint and unsigned release compilation
+        shell: bash
+        env:
+          VERSION_NAME: ${{ steps.version.outputs.version_name }}
+          VERSION_CODE: ${{ steps.version.outputs.version_code }}
+        run: |
+          set -euo pipefail
+          ./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleRelease \
+            -PreleaseVersionCode="$VERSION_CODE" \
+            -PreleaseVersionName="$VERSION_NAME" --no-daemon --stacktrace
+          test -s app/build/outputs/apk/release/app-release-unsigned.apk
+
+      - name: Transfer unsigned APK to isolated signing runner
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: filemanager-unsigned-release
+          path: app/build/outputs/apk/release/app-release-unsigned.apk
+          archive: true
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 0
+
+  sign_and_publish:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: write
+    env:
+      VERSION_NAME: ${{ needs.build.outputs.version_name }}
+      VERSION_CODE: ${{ needs.build.outputs.version_code }}
+      # Pinned from the successfully signed MeowMeow File Manager APK
+      # (run 45998145747). NEVER replace with Pocket Folder Player's key.
+      SIGNER_CERT_SHA256: 01b7aa1b4e7bc0d40964ee48b5db68df563ba8441153afeebfca225e0f42d8ec
+      ENCRYPTED_BACKUP_SHA256: f9f58078aff61df78743a68fe597366d34a2c0c16ce4d799e8a86b03a624e4b1
+    steps:
+      - name: Reject duplicate or downgrade Beta tags before touching secrets
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="v$VERSION_NAME-beta.1"
+          HIGHEST_PATCH=0
+          TAGS="$(gh api --paginate "repos/$GITHUB_REPOSITORY/tags?per_page=100" --jq '.[].name')"
+          while IFS= read -r EXISTING; do
+            [[ -n "$EXISTING" ]] || continue
+            if [[ "$EXISTING" == "$TAG" ]]; then
+              echo "::error::Tag $TAG already exists. Never overwrite published or unaccompanied tags."
+              exit 1
+            fi
+            if [[ "$EXISTING" =~ ^v0\.3\.([0-9]+)(-beta\.1)?$ ]]; then
+              PATCH="${BASH_REMATCH[1]}"
+              if (( 10#$PATCH > HIGHEST_PATCH )); then
+                HIGHEST_PATCH=$((10#$PATCH))
+              fi
+            fi
+          done <<< "$TAGS"
+          PATCH="${VERSION_NAME##*.}"
+          if (( 10#$PATCH <= HIGHEST_PATCH || VERSION_CODE <= 3000 + HIGHEST_PATCH )); then
+            echo "::error::An older workflow attempt cannot publish a downgrade. Start a new run."
+            exit 1
+          fi
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::Release $TAG already exists."
+            exit 1
+          fi
+          echo "Version and tag guard passed for $TAG."
+
+      # This job never checks out or executes untrusted application source.
+      - name: Download unsigned build as standard ZIP artifact
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          name: filemanager-unsigned-release
+          path: unsigned
+
+      - name: Set up Java for keystore verification
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install Android signing tools
+        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4
+        with:
+          packages: platform-tools
+
+      - name: Install Android build tools
+        run: sdkmanager 'build-tools;36.0.0'
+
+      - name: Restore the original key, sign and validate APK identity
+        id: sign
+        shell: bash
+        env:
+          MM_STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
+          MM_BACKUP_PASSPHRASE: ${{ secrets.SIGNING_BACKUP_PASSPHRASE }}
+          MM_ENCRYPTED_KEY_BASE64: ${{ secrets.SIGNING_ENCRYPTED_KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          umask 077
+          if [[ -z "$MM_STORE_PASSWORD" || -z "$MM_BACKUP_PASSPHRASE" || -z "$MM_ENCRYPTED_KEY_BASE64" ]]; then
+            echo "::error::All three signing secrets are required."
+            exit 1
+          fi
+          ENCRYPTED="$RUNNER_TEMP/meowmeow-filemanager-release.p12.gpg"
+          KEYSTORE="$RUNNER_TEMP/meowmeow-filemanager-release.p12"
+          ALIGNED="$RUNNER_TEMP/meowmeow-filemanager-unsigned-aligned.apk"
+          TOOLS="$ANDROID_HOME/build-tools/36.0.0"
+          APK="MeowMeowFileManager-v$VERSION_NAME-beta.1.apk"
+          trap 'rm -f "$ENCRYPTED" "$KEYSTORE" "$ALIGNED"' EXIT
+          test -s unsigned/app-release-unsigned.apk
+          printf '%s' "$MM_ENCRYPTED_KEY_BASE64" | base64 --decode > "$ENCRYPTED"
+          printf '%s  %s\n' "$ENCRYPTED_BACKUP_SHA256" "$ENCRYPTED" | sha256sum --check --status || {
+            echo "::error::Encrypted keystore does not match MeowMeow's established signing identity. Recover its original encrypted backup; do not regenerate a new key."
+            exit 1
+          }
+
+          gpg --batch --yes --pinentry-mode loopback \
+            --decrypt --passphrase-fd 3 --output "$KEYSTORE" "$ENCRYPTED" \
+            3<<<"$MM_BACKUP_PASSPHRASE"
+          keytool -list -alias meowmeow-release -storetype PKCS12 \
+            -keystore "$KEYSTORE" -storepass:env MM_STORE_PASSWORD >/dev/null
+
+          "$TOOLS/zipalign" -f -p 4 unsigned/app-release-unsigned.apk "$ALIGNED"
+          "$TOOLS/apksigner" sign \
+            --ks "$KEYSTORE" --ks-type PKCS12 --ks-key-alias meowmeow-release \
+            --ks-pass env:MM_STORE_PASSWORD --key-pass env:MM_STORE_PASSWORD \
+            --out "$APK" "$ALIGNED"
+          "$TOOLS/apksigner" verify --verbose --print-certs "$APK" > "$RUNNER_TEMP/signature.txt"
+          grep -F 'Verified using v2 scheme (APK Signature Scheme v2): true' "$RUNNER_TEMP/signature.txt"
+          grep -F 'Verified using v3 scheme (APK Signature Scheme v3): true' "$RUNNER_TEMP/signature.txt"
+          grep -F "Signer #1 certificate SHA-256 digest: $SIGNER_CERT_SHA256" "$RUNNER_TEMP/signature.txt"
+          "$TOOLS/zipalign" -c 4 "$APK"
+          "$TOOLS/aapt" dump badging "$APK" | grep -m1 '^package:' > "$RUNNER_TEMP/package.txt"
+          grep -F "name='com.meowmeow.filemanager'" "$RUNNER_TEMP/package.txt"
+          grep -F "versionCode='$VERSION_CODE'" "$RUNNER_TEMP/package.txt"
+          grep -F "versionName='$VERSION_NAME'" "$RUNNER_TEMP/package.txt"
+          sha256sum "$APK" | tee "$APK.sha256"
+          echo "apk=$APK" >> "$GITHUB_OUTPUT"
+
+      - name: Publish signed Beta GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          APK: ${{ steps.sign.outputs.apk }}
+        run: |
+          set -euo pipefail
+          TAG="v$VERSION_NAME-beta.1"
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::Release $TAG already exists. No files will be replaced."
+            exit 1
+          fi
+          cat > "$RUNNER_TEMP/release-notes.md" <<EOF
+          ## MeowMeow File Manager $VERSION_NAME — Beta
+
+          Download the signed Android APK from Assets. Requires Android 8.0+.
+
+          This Beta was built automatically from a change to the main branch.
+          JVM unit tests, Android lint, signature verification, app ID,
+          version and original signing-certificate verification passed.
+
+          Android versionCode: $VERSION_CODE
+          Source commit: $GITHUB_SHA
+
+          Signed APKs can update previous releases with the same certificate
+          and lower version codes. Debug-signed installations may require a
+          one-time uninstall, potentially removing app settings.
+          Beta software still requires real-device testing.
+
+          This GitHub repository is private, so release assets require access
+          to the repository. Automatic publication does not install APK updates
+          on devices or send them to Google Play.
+          EOF
+          gh release create "$TAG" "$APK#Installable Android APK" \
+            "$APK.sha256#SHA-256 checksum" \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --title "MeowMeow File Manager $VERSION_NAME — Beta" \
+            --notes-file "$RUNNER_TEMP/release-notes.md" \
+            --prerelease --latest=false
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" \
+            --json url,tagName,isPrerelease,assets

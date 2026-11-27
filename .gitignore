@@ -13,3 +13,6 @@ build/
 *.keystore
 *.p12
 *.pfx
+
+# GPG-encrypted backups belong in private Secrets/off-repo storage.
+*.p12.gpg

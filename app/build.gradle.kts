@@ -15,8 +15,10 @@ android {
         applicationId = "com.meowmeow.filemanager"
         minSdk = 26
         targetSdk = 36
-        versionCode = 3
-        versionName = "0.3.0"
+        // Signed Beta releases receive strictly increasing overrides from
+        // the isolated GitHub Actions build job; local/debug defaults remain.
+        versionCode = providers.gradleProperty("releaseVersionCode").orNull?.toInt() ?: 3
+        versionName = providers.gradleProperty("releaseVersionName").orNull ?: "0.3.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
