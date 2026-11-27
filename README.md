@@ -253,7 +253,17 @@ APK; execute \`./gradlew :app:connectedDebugAndroidTest\` on a device
 to exercise DOCX/ODT parsing, PDF renderer reuse and actual Android
 image decoding. See [device QA section 11](docs/ADVANCED_READER_QA.md#11--securityperformance-regression-after-deep-code-review).
 
-**Signing is unresolved until a persistent testing key is selected and
-stored securely.** GitHub-hosted debug builds may use different keys,
-preventing installation as an update over the previous test APK.
-Never commit a private signing keystore or passwords to the repository.
+**Signing:** Automated debug builds remain disposable and may have
+different certificates. Official releases use a separately initialized
+permanent signing key, with only an encrypted backup and checksum committed
+directly to main during explicit key initialization. Never commit a plaintext private signing keystore or passwords.
+
+## Signed Android releases
+
+A separate GitHub Actions release workflow assembles a verified,
+signed release APK using the two repository secrets `SIGNING_STORE_PASSWORD`
+and `SIGNING_BACKUP_PASSPHRASE` and an encrypted permanent signing key. Its manual run can first build
+a signed test artifact, and then publish versioned GitHub Releases.
+See [release setup and signing requirements](docs/SIGNED_RELEASES.md).
+
+The repo is private, so Release downloads require repository access.

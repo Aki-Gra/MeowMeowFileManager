@@ -16,8 +16,19 @@ android {
         minSdk = 26
         targetSdk = 36
         versionCode = 3
-        versionName = "0.3.0-reader-preview"
+        versionName = "0.3.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    // APK signing is intentionally external to Gradle: an unsigned
+    // release is compiled/tested first, then zipalign + apksigner
+    // handle signing in a manual, main-only GitHub Actions workflow.
+    // Signing credentials are never provided to Gradle or PR builds.
+    buildTypes {
+        getByName("release") {
+            isDebuggable = false
+            isMinifyEnabled = false
+        }
     }
 
     buildFeatures { compose = true }
