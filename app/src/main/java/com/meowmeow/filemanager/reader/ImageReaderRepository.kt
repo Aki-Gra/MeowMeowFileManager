@@ -9,6 +9,7 @@ import android.media.ExifInterface
 import android.net.Uri
 import android.os.Build
 import android.provider.OpenableColumns
+import androidx.annotation.RequiresApi
 import java.io.IOException
 import java.io.File
 import java.io.FileOutputStream
@@ -99,6 +100,7 @@ internal class ImageReaderRepository(private val context: Context) {
         }
     }
 
+    @RequiresApi(Build.VERSION_CODES.P)
     private fun decodeModern(uri: Uri): Bitmap {
         val source = if (uri.scheme == "file") {
             ImageDecoder.createSource(File(requireNotNull(uri.path)))
