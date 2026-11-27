@@ -1,5 +1,12 @@
 # Automatic signed Beta releases
 
+> **Signing-identity rotation in progress (27 November 2026).** The original
+> encrypted backup and checksum were removed from main. The active automatic
+> release workflow still pins the OLD signing identity and uses the OLD Actions
+> secrets until they are replaced. Do not trigger a new release until rotation
+> is complete. See [Signing rotation and public release preparation](SIGNING_ROTATION_PUBLICATION.md).
+> Keep this repository private while the old history is being assessed.
+
 MeowMeow File Manager automatically creates a signed **Beta GitHub Release**
 when application source or build configuration changes on the trusted
 `main` branch. Documentation and workflow-only pushes do not publish APKs.
