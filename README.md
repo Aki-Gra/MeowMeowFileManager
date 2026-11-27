@@ -257,3 +257,12 @@ image decoding. See [device QA section 11](docs/ADVANCED_READER_QA.md#11--securi
 stored securely.** GitHub-hosted debug builds may use different keys,
 preventing installation as an update over the previous test APK.
 Never commit a private signing keystore or passwords to the repository.
+
+## Signed Android releases
+
+A separate GitHub Actions release workflow assembles a verified,
+signed release APK using repository secrets. Its manual run can first build
+a signed test artifact, and then publish versioned GitHub Releases.
+See [release setup and signing requirements](docs/SIGNED_RELEASES.md).
+
+The repo is private, so Release downloads require repository access.
