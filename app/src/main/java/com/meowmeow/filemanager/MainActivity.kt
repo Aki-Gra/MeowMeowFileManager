@@ -18,6 +18,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.ui.Alignment
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.dp
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CleaningServices
 import androidx.compose.material.icons.filled.Folder
@@ -125,6 +127,8 @@ class MainActivity : ComponentActivity() {
             val bulkState by bulk.state.collectAsStateWithLifecycle()
             val savedErrors by errorLog.entries.collectAsStateWithLifecycle()
             val errorLoggingEnabled by errorLog.enabled.collectAsStateWithLifecycle()
+            var explorerBottomBarHeight by remember { mutableStateOf(0) }
+            val explorerBottomInset = with(LocalDensity.current) { explorerBottomBarHeight.toDp() }
             var page by rememberSaveable { mutableStateOf(Page.FILES) }
             var usingDevice by rememberSaveable { mutableStateOf(canBrowseSharedStorage()) }
             var previousAllFilesAccess by remember { mutableStateOf(allFilesGranted) }
@@ -244,6 +248,7 @@ class MainActivity : ComponentActivity() {
                         when (page) {
                             Page.FILES -> ExplorerScreen(
                                 state = if (usingDevice) deviceState else scopedState,
+                                onBottomBarHeightChanged = { explorerBottomBarHeight = it },
                                 onChooseFolder = {
                                     if (taskCenter.allowMutation("Change folder access", null))
                                         folderPicker.launch(null)
@@ -493,7 +498,9 @@ class MainActivity : ComponentActivity() {
                             onKeepConflict = taskCenter::keepCurrentTasks,
                             onStopConflict = taskCenter::stopConflictingTasks,
                             onDismissNotice = taskCenter::dismissNotice,
-                            modifier = Modifier.align(Alignment.BottomStart)
+                            modifier = Modifier.align(Alignment.BottomStart).padding(
+                                bottom = if (page == Page.FILES) explorerBottomInset else 0.dp
+                            )
                         )
                     }
                 }
