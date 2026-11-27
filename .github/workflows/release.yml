@@ -36,7 +36,7 @@ jobs:
         run: |
           set -euo pipefail
           test -s signing/release-keystore.p12.gpg || {
-            echo "::error::Encrypted key is missing. Run Initialize Android release signing and merge the generated encrypted-key PR."
+            echo "::error::Encrypted key is missing from main. Restore the existing encrypted key backup; do not generate a new signing identity."
             exit 1
           }
           test -s signing/release-keystore.sha256 || {
