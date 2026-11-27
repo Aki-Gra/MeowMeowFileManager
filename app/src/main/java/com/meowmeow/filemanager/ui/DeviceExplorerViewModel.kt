@@ -42,6 +42,7 @@ class DeviceExplorerViewModel(
     val search: StateFlow<FileSearchState> = _search
     private var searchJob: Job? = null
     private val searchRoutes = mutableMapOf<String, List<File>>()
+    private val searchPlaces = mutableMapOf<String, CopyPlace>()
 
     fun openRoot() {
         if (!repository.hasAccess()) {
@@ -209,6 +210,13 @@ class DeviceExplorerViewModel(
             }
             outcome.onSuccess { result ->
                 searchRoutes.clear()
+                searchPlaces.clear()
+                result.matches.forEach { match ->
+                    match.target?.let { target ->
+                        searchPlaces[match.entry.id] = CopyPlace(CopyNode.Device(target), "device",
+                            match.folderTrail.map { it.path }, match.entry)
+                    }
+                }
                 result.matches.filter { it.entry.isDirectory }.forEach {
                     searchRoutes[it.entry.id] = it.folderTrail
                 }
@@ -250,6 +258,7 @@ class DeviceExplorerViewModel(
         searchJob?.cancel()
         searchJob = null
         searchRoutes.clear()
+        searchPlaces.clear()
         _search.value = FileSearchState()
     }
 
@@ -280,6 +289,37 @@ class DeviceExplorerViewModel(
         return runCatching {
             CopyPlace(CopyNode.Device(folder), "device", folders.map { it.path })
         }.getOrNull()
+    }
+
+    private fun searchPlace(entry: FileEntry): CopyPlace? =
+        searchPlaces[entry.id]?.takeIf { it.expectedEntry == entry &&
+            repository.hasAccess() &&
+            !taskCenter.state.value.latestOutdated(BackgroundTaskKind.DEVICE_SEARCH) }
+
+    fun searchSelection(entry: FileEntry): CopyPlace? = searchPlace(entry)
+
+    fun renameSearch(entry: FileEntry, name: String) {
+        val place = searchPlace(entry) ?: return staleSearch()
+        val target = (place.node as CopyNode.Device).file
+        val parent = target.parentFile ?: return staleSearch()
+        mutate("Rename search item", ErrorOperation.FS_RENAME, deviceTaskScope(parent)) {
+            repository.validateSearchEntry(target, entry)
+            repository.rename(target, name)
+        }
+    }
+
+    fun deleteSearch(entry: FileEntry) {
+        val place = searchPlace(entry) ?: return staleSearch()
+        val target = (place.node as CopyNode.Device).file
+        mutate("Delete search item", ErrorOperation.FS_DELETE, deviceTaskScope(target)) {
+            repository.validateSearchEntry(target, entry)
+            
+            repository.delete(target)
+        }
+    }
+
+    private fun staleSearch() {
+        _state.value = _state.value.copy(errorMessage = "Search result is outdated. Search again.")
     }
 
     fun copySelection(entry: FileEntry): CopyPlace? {
