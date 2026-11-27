@@ -10,7 +10,40 @@ There are currently no external users requiring update compatibility, so this
 one-time signing-key reset is intentional. APKs signed with the replacement key
 will generally not install as upgrades over the previous signed Beta.
 
-## 1. Generate locally, outside GitHub
+## No-code option: generate the new signing key entirely on GitHub
+
+**Recommended for anyone without Python or a development computer.**
+The repository must remain PRIVATE during this process.
+
+1. Open **GitHub → MeowMeowFileManager → Actions**.
+2. Select **Rotate Android signing key (manual, private repository)**.
+3. Choose **Run workflow** on branch **main**, type **ROTATE_SIGNING_KEY**
+   in the confirmation box, and run.
+4. When the job succeeds, download the **New-FileManager-Encrypted-Signing-Key**
+   artifact and open the ZIP using your phone or computer's ordinary file manager.
+5. Inside the ZIP, find
+   **COPY-TO-SIGNING_ENCRYPTED_KEYSTORE_BASE64.txt**. Copy its entire line.
+   Treat this as sensitive backup data; do not paste it in chat.
+6. Open **Settings → Secrets and variables → Actions** in the GitHub repo.
+   Edit **SIGNING_ENCRYPTED_KEYSTORE_BASE64** and replace its old value with
+   the copied line. Keep the two existing password secrets unchanged.
+7. Securely retain **release-keystore.p12.gpg** from the artifact as an offline
+   encrypted backup (GitHub expires the artifact after seven days).
+8. The **PUBLIC-VERIFICATION-HASHES.txt** file contains the two non-secret
+   hashes needed to update the auto-release workflow. Do not put the
+   encrypted key itself or either password into the workflow source.
+9. Update the public SHA-256 pins in the auto-release workflow. Then trigger
+   a fresh Beta build on main and confirm signing, tests, lint, version
+   metadata, and release publishing all succeed.
+
+The workflow cannot update GitHub repository secrets itself; the one-time
+copy/paste in GitHub Settings is required. Generation does not commit
+plaintext or encrypted key material to the repository. This replaces
+the signing identity but **does not remove the old ciphertext from Git
+history**: history still must be cleaned or a fresh public repository
+created before making the original repository public.
+
+## Alternative: generate locally (requires Python), outside GitHub
 
 On a trusted computer with Python 3.9+, JDK keytool and GnuPG installed:
 
