@@ -23,10 +23,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 35
     env:
-      MEOWMEOW_SIGNING_KEYSTORE_PATH: /tmp/meowmeow-release-key.jks
-      MEOWMEOW_SIGNING_STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-      MEOWMEOW_SIGNING_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-      MEOWMEOW_SIGNING_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+      MEOWMEOW_SIGNING_KEYSTORE_PATH: /tmp/meowmeow-release-key.p12
+      MEOWMEOW_SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
+      MEOWMEOW_SIGNING_KEY_ALIAS: meowmeow-release
+      MEOWMEOW_SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
@@ -70,20 +70,31 @@ jobs:
           yes | "$SDKMANAGER" --licenses >/dev/null || true
           "$SDKMANAGER" 'platforms;android-37.0' 'build-tools;36.0.0'
       - uses: gradle/actions/setup-gradle@v4
-      - name: Restore release signing keystore
+      - name: Decrypt permanent release signing keystore
         shell: bash
         env:
-          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          SIGNING_BACKUP_PASSPHRASE: ${{ secrets.SIGNING_BACKUP_PASSPHRASE }}
         run: |
           set -euo pipefail
-          if [[ -z "$KEYSTORE_BASE64" || -z "$MEOWMEOW_SIGNING_STORE_PASSWORD" ||
-                -z "$MEOWMEOW_SIGNING_KEY_ALIAS" || -z "$MEOWMEOW_SIGNING_KEY_PASSWORD" ]]; then
-            echo "::error::Signing secrets missing; see docs/SIGNED_RELEASES.md."
+          test -s signing/release-keystore.p12.gpg || {
+            echo "::error::Missing encrypted signing key. Run Initialize Android release signing and merge its encrypted-key PR."
+            exit 1
+          }
+          if [[ -z "$SIGNING_BACKUP_PASSPHRASE" || -z "$MEOWMEOW_SIGNING_STORE_PASSWORD" ]]; then
+            echo "::error::Both signing secrets are required."
             exit 1
           fi
           umask 077
-          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$MEOWMEOW_SIGNING_KEYSTORE_PATH"
+          exec 3<<<"$SIGNING_BACKUP_PASSPHRASE"
+          gpg --batch --yes --quiet --pinentry-mode loopback --passphrase-fd 3 \
+            --decrypt --output "$MEOWMEOW_SIGNING_KEYSTORE_PATH" \
+            signing/release-keystore.p12.gpg
+          exec 3<&-
           test -s "$MEOWMEOW_SIGNING_KEYSTORE_PATH"
+          keytool -list -storetype PKCS12 \
+            -keystore "$MEOWMEOW_SIGNING_KEYSTORE_PATH" \
+            -storepass:env MEOWMEOW_SIGNING_STORE_PASSWORD \
+            -alias meowmeow-release >/dev/null
       - name: Unit tests and signed APK
         run: ./gradlew :app:testDebugUnitTest :app:assembleRelease --no-daemon --stacktrace
       - name: Verify signed APK and prepare asset

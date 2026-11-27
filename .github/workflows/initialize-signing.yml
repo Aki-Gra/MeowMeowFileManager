@@ -1,0 +1,95 @@
+name: Initialize Android release signing
+
+# One-time manual operation; the key is never published or committed unencrypted.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: signing-key-bootstrap
+  cancel-in-progress: false
+
+jobs:
+  generate-encrypted-key:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
+      SIGNING_BACKUP_PASSPHRASE: ${{ secrets.SIGNING_BACKUP_PASSPHRASE }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Validate secrets and refuse to replace an existing key
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "$SIGNING_STORE_PASSWORD" || -z "$SIGNING_BACKUP_PASSPHRASE" ]]; then
+            echo "::error::Both signing secrets are required."
+            exit 1
+          fi
+          if [[ -f signing/release-keystore.p12.gpg ]]; then
+            echo "::error::Permanent release key already exists. Do not replace it."
+            exit 1
+          fi
+          if [[ -n "$(git ls-remote --heads origin 'refs/heads/signing/initialize-key-*')" ]]; then
+            echo "::error::A signing-key initialization branch already exists. Review it instead."
+            exit 1
+          fi
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Create the permanent Android signing key and encrypt its backup
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -p signing
+          keytool -genkeypair -noprompt \
+            -alias meowmeow-release \
+            -keyalg RSA -keysize 4096 -validity 10000 \
+            -storetype PKCS12 -keystore /tmp/meowmeow-release-key.p12 \
+            -storepass:env SIGNING_STORE_PASSWORD \
+            -keypass:env SIGNING_STORE_PASSWORD \
+            -dname "CN=MeowMeow File Manager"
+          exec 3<<<"$SIGNING_BACKUP_PASSPHRASE"
+          gpg --batch --yes --quiet --pinentry-mode loopback \
+            --passphrase-fd 3 --cipher-algo AES256 --s2k-digest-algo SHA512 \
+            --symmetric --output signing/release-keystore.p12.gpg \
+            /tmp/meowmeow-release-key.p12
+          exec 3<&-
+          test -s signing/release-keystore.p12.gpg
+          chmod 600 signing/release-keystore.p12.gpg
+      - name: Delete unencrypted keystore from temporary runner storage
+        if: always()
+        shell: bash
+        run: rm -f /tmp/meowmeow-release-key.p12
+      - name: Save encrypted backup artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: encrypted-release-signing-backup
+          path: signing/release-keystore.p12.gpg
+          if-no-files-found: error
+          retention-days: 90
+      - name: Open a review PR containing only the encrypted key
+        shell: bash
+        run: |
+          set -euo pipefail
+          BRANCH="signing/initialize-key-${GITHUB_RUN_ID}"
+          git switch -c "$BRANCH"
+          git add signing/release-keystore.p12.gpg
+          git -c user.name='github-actions[bot]' \
+            -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+            commit -m "build(signing): store encrypted Android release keystore"
+          git push origin "HEAD:refs/heads/$BRANCH"
+          if ! gh pr create --head "$BRANCH" --base main \
+            --title "Install encrypted Android release signing key" \
+            --body "Only the GPG-encrypted PKCS12 keystore is committed. No plaintext signing key or passwords are included. Merge this PR before running signed release builds."; then
+            echo "::warning::Automatic PR creation was blocked. Open a PR for branch $BRANCH manually."
+          fi
