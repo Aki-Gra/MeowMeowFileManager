@@ -59,6 +59,16 @@ class LocalFileRepository {
         return checked(File(requireNotNull(uri.path)))
     }
 
+    fun validateSearchEntry(file: File, entry: FileEntry) {
+        val target = checkedForCopy(file)
+        check(target.exists() && target.canRead() && Uri.fromFile(target).toString() == entry.id &&
+            target.name == entry.name && target.isDirectory == entry.isDirectory &&
+            (entry.isDirectory || target.length() == entry.sizeBytes) &&
+            (entry.modifiedAtMillis <= 0 || target.lastModified() == entry.modifiedAtMillis)) {
+            "Search result changed. Search again."
+        }
+    }
+
     fun listChildren(folder: File): List<FileEntry> {
         val parent = checked(folder)
         check(parent.isDirectory && parent.canRead()) { "Folder is not readable." }
