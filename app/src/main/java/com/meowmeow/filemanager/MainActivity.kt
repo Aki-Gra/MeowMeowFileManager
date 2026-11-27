@@ -2,6 +2,8 @@ package com.meowmeow.filemanager
 
 import android.content.ActivityNotFoundException
 import android.content.Intent
+import android.content.ClipData
+import android.app.AlertDialog
 import android.net.Uri
 import java.io.IOException
 import android.os.Build
@@ -45,6 +47,8 @@ import com.meowmeow.filemanager.diagnostics.ErrorOperation
 import com.meowmeow.filemanager.diagnostics.formatErrorLog
 import com.meowmeow.filemanager.diagnostics.suggestedErrorLogFileName
 import com.meowmeow.filemanager.model.FileEntry
+import com.meowmeow.filemanager.model.isApkFile
+import com.meowmeow.filemanager.model.APK_MIME_TYPE
 import com.meowmeow.filemanager.reader.ReaderActivity
 import com.meowmeow.filemanager.reader.ImageGallerySessions
 import com.meowmeow.filemanager.sharing.FileSharing
@@ -545,12 +549,48 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun openApk(entry: FileEntry) {
+        try {
+            if (!packageManager.canRequestPackageInstalls()) {
+                AlertDialog.Builder(this)
+                    .setTitle("Allow app installation")
+                    .setMessage("Android requires permission to install apps from MeowMeow. Only install APKs you trust. Enable permission in Settings, then return and tap the APK again.")
+                    .setNegativeButton("Cancel", null)
+                    .setPositiveButton("Settings") { _, _ ->
+                        try {
+                            startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                                Uri.parse("package:$packageName")))
+                        } catch (_: Exception) {
+                            Toast.makeText(this, "Installation settings are unavailable", Toast.LENGTH_LONG).show()
+                        }
+                    }
+                    .show()
+                return
+            }
+            val uri = FileSharing.uriForEntry(this, entry)
+            val installIntent = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(uri, APK_MIME_TYPE)
+                clipData = ClipData.newUri(contentResolver, "APK", uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            startActivity(installIntent)
+        } catch (_: ActivityNotFoundException) {
+            Toast.makeText(this, "No Android package installer is available", Toast.LENGTH_LONG).show()
+        } catch (_: Exception) {
+            Toast.makeText(this, "Unable to open APK. Check file access and try again.", Toast.LENGTH_LONG).show()
+        }
+    }
+
     /**
-     * Document taps open inside MeowMeow first. Android's chooser is available
+     * Document taps open inside MeowMeow first, except APKs which use Android installation. Android's chooser is available
      * from the reader only after the user explicitly chooses "Open with…".
      * This same callback handles files from browsing, search and analysis.
      */
     private fun openFile(entry: FileEntry, siblings: List<FileEntry> = emptyList()) {
+        if (isApkFile(entry)) {
+            openApk(entry)
+            return
+        }
         val galleryToken = ImageGallerySessions.create(entry, siblings)
         try {
             val readerUri = FileSharing.uriForEntry(this, entry)

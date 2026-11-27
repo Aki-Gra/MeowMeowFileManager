@@ -4,11 +4,9 @@
 > A new keystore was generated and its encrypted backup restore-tested in
 > [GitHub Actions run 46013967169](https://github.com/Aki-Gra/MeowMeowFileManager/actions/runs/46013967169).
 > The release workflow now pins the replacement certificate and backup hashes.
-> The new encrypted-backup GitHub secret must match these pins; this is only
-> proven by running a new signed-release build. The original encrypted backup
-> has been deleted from the main tree but is still in Git history.
-> Keep the repository private until old references are cleaned or a fresh
-> history is used. See [the rotation/publication guide](SIGNING_ROTATION_PUBLICATION.md).
+> The replacement signing identity has been verified by successful signed Beta publication.
+> The repository is now public. Historical encrypted backups may remain in Git history;
+> see the [rotation/publication guide](SIGNING_ROTATION_PUBLICATION.md) for historical context.
 
 MeowMeow File Manager automatically creates a signed **Beta GitHub Release**
 when application source or build configuration changes on the trusted
@@ -18,7 +16,7 @@ Pull requests never access signing secrets.
 
 ## Three required secrets
 
-- `SIGNING_STORE_PASSWORD` — original permanent PKCS12 store password.
+- `SIGNING_STORE_PASSWORD` — current permanent PKCS12 store password.
 - `SIGNING_BACKUP_PASSPHRASE` — passphrase for the encrypted key backup.
 - `SIGNING_ENCRYPTED_KEYSTORE_BASE64` — Base64 of the encrypted **File
   Manager** backup (not Pocket Folder Player's and not plaintext keystore).
@@ -64,8 +62,7 @@ can update APKs signed with this new key. Older APKs signed before the
 pre-public key rotation generally require uninstalling first. Existing debug-signed
 builds may require a one-time uninstall.
 
-**Private repository:** GitHub Release assets are available only to
-authorized collaborators; this setup does not make APK downloads public.
+**Public repository:** Signed APKs and checksums are available in GitHub Release assets.
 A new release appearing on GitHub **does not automatically install** on
 phones. No Play Store publishing or in-app update mechanism is included.
 
@@ -75,9 +72,8 @@ The former one-time key generator and old manual signed publisher are
 archived as inert `.yml.disabled` files under `docs/workflow-archive/`.
 The pre-public key rotation workflow is manual-only and produces an
 **encrypted artifact**, not a tracked signing file.
-They are not runnable actions. Keep secure independent encrypted backups of the new signing identity and
-protect both passwords. Old encrypted backups remain in historical Git
-commits; remove that history before changing repository visibility.
+The archived workflows are not runnable actions. Keep secure independent encrypted backups of the new signing identity and
+protect both passwords. Old encrypted backups may remain in historical Git commits; Actions history cleanup does not rewrite Git history. Never reuse the superseded key.
 
 The separate debug workflow remains available for testing and PRs.
 The automatic release pipeline requires Android lint to pass. It is
