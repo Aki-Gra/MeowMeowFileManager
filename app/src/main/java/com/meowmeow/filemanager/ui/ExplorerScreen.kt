@@ -78,6 +78,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.meowmeow.filemanager.model.FileEntry
@@ -96,6 +97,7 @@ import java.util.Locale
 @Composable
 fun ExplorerScreen(
     state: ExplorerUiState,
+    onBottomBarHeightChanged: (Int) -> Unit,
     onChooseFolder: () -> Unit,
     onOpenDirectory: (FileEntry) -> Unit,
     onOpenFile: (FileEntry, List<FileEntry>) -> Unit,
@@ -172,6 +174,7 @@ fun ExplorerScreen(
             // Searches are app-level background tasks. Navigating tabs
             // must not cancel them or clear completed results.
             onBulkLeave()
+            onBottomBarHeightChanged(0)
         }
     }
     LaunchedEffect(searchState.isRunning, searchState.finished) {
@@ -182,9 +185,10 @@ fun ExplorerScreen(
         onBulkLeave()
     }
 
-    BackHandler(enabled = searchVisible || bulkState.stage == BulkStage.SELECTING ||
+    BackHandler(enabled = searchVisible || bulkState.stage == BulkStage.RESULTS || bulkState.stage == BulkStage.SELECTING ||
         bulkState.stage == BulkStage.DESTINATION || state.path.size > 1, onBack = {
         when {
+            bulkState.stage == BulkStage.RESULTS -> onBulkDiscard()
             searchVisible -> {
                 searchVisible = false
                 onCancelSearch()
@@ -216,6 +220,7 @@ fun ExplorerScreen(
     Scaffold(
         snackbarHost = { SnackbarHost(snackbar) },
         bottomBar = {
+            Box(Modifier.fillMaxWidth().onSizeChanged { onBottomBarHeightChanged(it.height) }) {
             if (bulkState.stage != BulkStage.OFF) {
                 BulkBottomBar(
                     state = bulkState,
@@ -255,6 +260,7 @@ fun ExplorerScreen(
                         }
                     }
                 }
+            }
             }
         },
         topBar = {
