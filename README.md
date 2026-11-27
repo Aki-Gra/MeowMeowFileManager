@@ -261,7 +261,8 @@ Never commit a private signing keystore or passwords to the repository.
 ## Signed Android releases
 
 A separate GitHub Actions release workflow assembles a verified,
-signed release APK using repository secrets. Its manual run can first build
+signed release APK using the two repository secrets `SIGNING_STORE_PASSWORD`
+and `SIGNING_BACKUP_PASSPHRASE` and an encrypted permanent signing key. Its manual run can first build
 a signed test artifact, and then publish versioned GitHub Releases.
 See [release setup and signing requirements](docs/SIGNED_RELEASES.md).
 

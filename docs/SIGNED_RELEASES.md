@@ -1,54 +1,81 @@
 # Signed Android APKs and GitHub Releases
 
-The signed release workflow builds APKs that future releases can update using
-the same permanent Android signing key. The ordinary debug build remains separate.
+The release setup uses the **two secrets you have already created**, without
+asking you to supply a keystore file, an alias or a third password:
 
-## GitHub Actions secret names
-
-Add these four repository secrets in GitHub Settings > Secrets and variables >
-Actions > Repository secrets. The names must match exactly:
-
-| Name | Meaning |
+| GitHub Actions secret | Purpose |
 |---|---|
-| ANDROID_KEYSTORE_BASE64 | Base64-encoded contents of the permanent .jks or .keystore file |
-| ANDROID_KEYSTORE_PASSWORD | Password for the keystore |
-| ANDROID_KEY_ALIAS | Alias of the Android signing key |
-| ANDROID_KEY_PASSWORD | Password of the alias (can equal keystore password) |
+| `SIGNING_STORE_PASSWORD` | Unlocks the permanent signing key |
+| `SIGNING_BACKUP_PASSPHRASE` | Encrypts and decrypts its stored backup |
 
-Keep the original keystore and its passwords in a separate secure backup.
-Do not paste any secret values into chats, issues, pull requests, code or
-GitHub Actions logs. Never commit the keystore to the repository.
+The two secrets must stay different. Keep independent copies of both
+passwords in your password manager **outside GitHub**. Do not paste
+secret values into chats, issue comments, pull requests, commit messages
+or workflow logs.
 
-The workflow reconstructs the keystore only on a temporary CI runner with
-restricted file permissions, uses environment variables for passwords,
-runs unit tests, assembles the release APK, verifies its signature with
-Android apksigner, and removes the temporary keystore. The signed APK and
-SHA256SUMS.txt are provided as a downloadable Actions artifact.
+## Step 1 — Generate the permanent key exactly once
 
-## First release: v0.3.0
+After the release setup PR has been approved and merged into `main`:
 
-After the release setup PR is merged into main:
+1. Visit **Actions → Initialize Android release signing → Run workflow**.
+   Select `main`. No secrets should be typed into the form.
+2. The workflow securely generates a **new PKCS12 release keystore**
+   with the fixed key alias `meowmeow-release`. The key password equals
+   `SIGNING_STORE_PASSWORD`, so no extra alias/password secrets are needed.
+3. The keystore is encrypted with GPG (AES-256) using
+   `SIGNING_BACKUP_PASSPHRASE`. Only the **encrypted** file
+   `signing/release-keystore.p12.gpg` is uploaded as a backup artifact
+   and proposed in a separate GitHub PR. The unencrypted key is removed
+   from temporary CI runner storage. The workflow never publishes an APK.
+4. Review and merge the encrypted-key PR into `main`. If repository
+   settings prevent GitHub Actions from opening the PR automatically,
+   open a PR from the `signing/initialize-key-...` branch created
+   by the workflow. Do not rerun key creation while that branch exists.
+5. **Download the encrypted backup artifact** from the bootstrap run
+   and keep a secure off-GitHub copy along with your password-manager
+   backups. GitHub Actions artifacts expire; Git alone is not a backup.
 
-1. Open GitHub > Actions > Signed Android release > Run workflow.
-2. Choose the main branch and keep Publish unchecked (false).
-3. Check the run succeeds and download signed-meowmeow-v0.3.0 from Artifacts.
-4. Test the installed APK. An existing debug APK signed by another key
-   may require uninstalling first; uninstalling can remove app-local settings.
-5. When happy with the signed APK, run the same workflow again on main,
-   this time setting Publish to true.
-6. The workflow creates the GitHub Release v0.3.0 and attaches
-   MeowMeowFileManager-v0.3.0.apk and SHA256SUMS.txt under Assets.
+The encrypted key file is intentionally tracked in source control. It
+contains ciphertext, not a plain key. Without the GPG passphrase,
+the release signing key cannot be read. Anyone with repository write
+access can change the encrypted file, so protect the `main` branch
+and review signing-related changes. The bootstrap workflow refuses
+to replace an existing permanent key.
 
-Alternatively, pushing a v0.3.0 Git tag referencing a commit on main triggers
-a release build and publication. The tag name must match Android versionName.
-The workflow rejects publishing a tag that already has a release.
+**Do not delete or regenerate this keystore after the first release.**
+Android requires subsequent APK updates to use the same key.
 
-Future versions must increase Android versionCode (monotonically) and update
-versionName before publishing. Back up the signing key: losing it prevents
-updating installations signed with that key.
+## Step 2 — Test the signed APK without publishing
 
-The repository is currently PRIVATE. Anyone downloading the release from
-GitHub must have access to this repository. Public distribution would require
-a separate, approved change to repo visibility or a public download host.
+Once `signing/release-keystore.p12.gpg` exists in `main`, go to
+**Actions → Signed Android release → Run workflow**, select `main`
+and leave `publish=false`.
 
-The normal Android build PR workflow never uses these signing secrets.
+This workflow decrypts the same keystore using your backup passphrase,
+validates it using the store password, runs unit tests, creates the
+signed release APK, verifies its Android signature, and saves
+`MeowMeowFileManager-v0.3.0.apk` and `SHA256SUMS.txt` as an Actions
+artifact.
+
+Install and device-test that signed APK. Existing debug builds have
+different signatures; you may need to uninstall the debug app once.
+Uninstalling can remove app-local settings and folder access grants.
+
+## Step 3 — Publish v0.3.0
+
+Re-run **Signed Android release** on `main` with `publish=true`.
+The successful run publishes `v0.3.0` to GitHub Releases with the
+APK and SHA-256 checksum under Assets. Alternatively, pushing a
+matching `v0.3.0` tag on main publishes the release.
+
+Future versions must increment Android `versionCode`, change
+`versionName`, and use the same encrypted signing key.
+
+**Repository access:** The repository is currently private, so only
+people who have repository access can download its release assets.
+Public distribution is a separate decision.
+
+**Safety model:** Pull-request builds have no access to signing secrets.
+Only explicitly triggered main-branch workflows or release-tag runs
+can access them. No plaintext keystore or signing passwords are
+committed or uploaded. The ordinary debug APK workflow is unchanged.

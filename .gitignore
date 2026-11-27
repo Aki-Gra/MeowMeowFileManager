@@ -7,3 +7,9 @@ build/
 *.apk
 *.aab
 .DS_Store
+
+# Never commit plaintext release signing keys. Only .gpg encrypted backups allowed.
+*.jks
+*.keystore
+*.p12
+*.pfx
