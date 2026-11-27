@@ -1,20 +1,3 @@
-// Release credentials are read from the environment. Never commit signing material.
-val releaseKeystorePath = System.getenv("MEOWMEOW_SIGNING_KEYSTORE_PATH")
-val releaseStorePassword = System.getenv("MEOWMEOW_SIGNING_STORE_PASSWORD")
-val releaseKeyAlias = System.getenv("MEOWMEOW_SIGNING_KEY_ALIAS")
-val releaseKeyPassword = System.getenv("MEOWMEOW_SIGNING_KEY_PASSWORD")
-val hasReleaseSigning = listOf(
-    releaseKeystorePath, releaseStorePassword, releaseKeyAlias, releaseKeyPassword
-).all { !it.isNullOrBlank() }
-val requestedReleaseBuild = gradle.startParameter.taskNames.any {
-    it.substringAfterLast(':') in setOf("assembleRelease", "bundleRelease")
-}
-if (requestedReleaseBuild && !hasReleaseSigning) {
-    throw GradleException(
-        "Missing release signing environment variables. See docs/SIGNED_RELEASES.md."
-    )
-}
-
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.plugin.compose")
@@ -37,24 +20,14 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
-    signingConfigs {
-        if (hasReleaseSigning) {
-            create("meowmeowRelease") {
-                storeFile = file(requireNotNull(releaseKeystorePath))
-                storeType = "pkcs12"
-                storePassword = releaseStorePassword
-                keyAlias = releaseKeyAlias
-                keyPassword = releaseKeyPassword
-            }
-        }
-    }
+    // APK signing is intentionally external to Gradle: an unsigned
+    // release is compiled/tested first, then zipalign + apksigner
+    // handle signing in a manual, main-only GitHub Actions workflow.
+    // Signing credentials are never provided to Gradle or PR builds.
     buildTypes {
         getByName("release") {
             isDebuggable = false
             isMinifyEnabled = false
-            if (hasReleaseSigning) {
-                signingConfig = signingConfigs.getByName("meowmeowRelease")
-            }
         }
     }
 
