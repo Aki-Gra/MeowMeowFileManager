@@ -277,6 +277,23 @@ class MainActivity : ComponentActivity() {
                                 onRename = { entry, name ->
                                     if (usingDevice) device.rename(entry, name) else scoped.rename(entry, name)
                                 },
+                                onSearchRename = { entry, name ->
+                                    if (usingDevice) device.renameSearch(entry, name) else scoped.renameSearch(entry, name)
+                                },
+                                onSearchDelete = { entry ->
+                                    if (usingDevice) device.deleteSearch(entry) else scoped.deleteSearch(entry)
+                                },
+                                onSearchCopy = { entry ->
+                                    copy.select(if (usingDevice) device.searchSelection(entry) else scoped.searchSelection(entry), entry.name)
+                                },
+                                onSearchBulkToggle = { entry ->
+                                    bulk.toggle(entry, if (usingDevice) device.searchSelection(entry) else scoped.searchSelection(entry))
+                                },
+                                onSearchBulkSelectAll = { entries ->
+                                    bulk.selectAll(entries) { entry ->
+                                        if (usingDevice) device.searchSelection(entry) else scoped.searchSelection(entry)
+                                    }
+                                },
                                 onDelete = { entry ->
                                     if (usingDevice) device.delete(entry) else scoped.delete(entry)
                                 },
