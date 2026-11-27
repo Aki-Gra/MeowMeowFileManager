@@ -231,7 +231,7 @@ jobs:
 
           This Beta was built automatically from a change to the main branch.
           JVM unit tests, Android lint, signature verification, app ID,
-          version and original signing-certificate verification passed.
+          version and signing-certificate verification passed.
 
           Android versionCode: $VERSION_CODE
           Source commit: $GITHUB_SHA
@@ -241,8 +241,9 @@ jobs:
           one-time uninstall, potentially removing app settings.
           Beta software still requires real-device testing.
 
-          This GitHub repository is private, so release assets require access
-          to the repository. Automatic publication does not install APK updates
+          Download the signed APK from the public GitHub Release assets.
+          APKs signed before the 27 November 2026 key rotation may require uninstalling first.
+          Automatic publication does not install APK updates
           on devices or send them to Google Play.
           EOF
           gh release create "$TAG" "$APK#Installable Android APK" \
