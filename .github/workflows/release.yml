@@ -23,7 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 35
     env:
-      MEOWMEOW_SIGNING_KEYSTORE_PATH: ${{ runner.temp }}/release-key.jks
+      MEOWMEOW_SIGNING_KEYSTORE_PATH: /tmp/meowmeow-release-key.jks
       MEOWMEOW_SIGNING_STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
       MEOWMEOW_SIGNING_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
       MEOWMEOW_SIGNING_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
