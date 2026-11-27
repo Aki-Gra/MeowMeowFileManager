@@ -107,6 +107,11 @@ fun ExplorerScreen(
     onSort: (SortMode) -> Unit,
     onCreateFolder: (String) -> Unit,
     onRename: (FileEntry, String) -> Unit,
+    onSearchRename: (FileEntry, String) -> Unit,
+    onSearchDelete: (FileEntry) -> Unit,
+    onSearchCopy: (FileEntry) -> Unit,
+    onSearchBulkToggle: (FileEntry) -> Unit,
+    onSearchBulkSelectAll: (List<FileEntry>) -> Unit,
     onDelete: (FileEntry) -> Unit,
     onCopy: (FileEntry) -> Unit,
     copyState: CopyUiState,
@@ -144,6 +149,8 @@ fun ExplorerScreen(
     var creating by rememberSaveable { mutableStateOf(false) }
     var renameTarget by remember { mutableStateOf<FileEntry?>(null) }
     var deleteTarget by remember { mutableStateOf<FileEntry?>(null) }
+    var renameFromSearch by remember { mutableStateOf(false) }
+    var deleteFromSearch by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val modePrefs = remember(context) {
         context.applicationContext.getSharedPreferences(
@@ -180,7 +187,11 @@ fun ExplorerScreen(
     LaunchedEffect(searchState.isRunning, searchState.finished) {
         if (searchState.isRunning || searchState.finished) searchVisible = true
     }
-    // A selection belongs to exactly one source folder.
+    val showingSearch = searchVisible && bulkState.stage != BulkStage.DESTINATION && copyState.sourceName == null
+    LaunchedEffect(searchOutdated) {
+        if (searchOutdated && showingSearch) onBulkLeave()
+    }
+    // Clear active selection when the browsing context changes.
     LaunchedEffect(state.path, usingDevice) {
         onBulkLeave()
     }
@@ -189,11 +200,11 @@ fun ExplorerScreen(
         bulkState.stage == BulkStage.DESTINATION || state.path.size > 1, onBack = {
         when {
             bulkState.stage == BulkStage.RESULTS -> onBulkDiscard()
-            searchVisible -> {
+            bulkState.stage == BulkStage.SELECTING -> onBulkDiscard()
+            showingSearch -> {
                 searchVisible = false
                 onCancelSearch()
             }
-            bulkState.stage == BulkStage.SELECTING -> onBulkDiscard()
             bulkState.stage == BulkStage.DESTINATION && state.path.size <= 1 -> onBulkDiscard()
             else -> onNavigateUp()
         }
@@ -295,7 +306,7 @@ fun ExplorerScreen(
                                 contentDescription = if (searchVisible) "Close search" else "Search files")
                         }
                     }
-                    if (state.hasRoot && !searchVisible &&
+                    if (state.hasRoot && (!showingSearch || (searchState.finished && !searchOutdated)) &&
                         (bulkState.stage == BulkStage.OFF || bulkState.stage == BulkStage.SELECTING)) {
                         IconButton(
                             onClick = {
@@ -354,7 +365,7 @@ fun ExplorerScreen(
         }
     ) { innerPadding ->
         when {
-            searchVisible && state.hasRoot -> {
+            showingSearch && state.hasRoot -> {
                 Column(
                     modifier = Modifier.fillMaxSize().padding(innerPadding)
                         .padding(horizontal = 16.dp),
@@ -497,20 +508,33 @@ fun ExplorerScreen(
                             style = MaterialTheme.typography.bodyMedium
                         )
                     }
+                    if (bulkState.stage == BulkStage.SELECTING) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            TextButton(onClick = { onSearchBulkSelectAll(searchState.hits.map { it.entry }) }) { Text("Select all") }
+                            TextButton(onClick = onBulkClear) { Text("Deselect all") }
+                        }
+                    }
                     LazyColumn(
                         modifier = Modifier.weight(1f),
                         contentPadding = PaddingValues(bottom = 24.dp)
                     ) {
                         items(searchState.hits, key = { it.entry.id }) { hit ->
+                            var menuExpanded by remember { mutableStateOf(false) }
+                            val selecting = bulkState.stage == BulkStage.SELECTING
+                            val actionable = !searchOutdated && searchState.finished
                             ListItem(
                                 modifier = Modifier.fillMaxWidth().clickable {
-                                    if (hit.entry.isDirectory) {
+                                    if (!actionable) return@clickable
+                                    if (selecting) onSearchBulkToggle(hit.entry)
+                                    else if (hit.entry.isDirectory) {
                                         onOpenSearchFolder(hit)
                                         searchVisible = false
                                     } else onOpenFile(hit.entry, searchState.hits.map { it.entry })
                                 },
                                 leadingContent = {
-                                    Icon(
+                                    if (selecting) Checkbox(checked = hit.entry.id in bulkState.selectedIds,
+                                        enabled = actionable, onCheckedChange = { onSearchBulkToggle(hit.entry) })
+                                    else Icon(
                                         if (hit.entry.isDirectory) Icons.Default.Folder
                                         else Icons.Default.InsertDriveFile,
                                         contentDescription = null,
@@ -520,6 +544,21 @@ fun ExplorerScreen(
                                 headlineContent = {
                                     Text(hit.entry.name, maxLines = 1,
                                         overflow = TextOverflow.Ellipsis)
+                                },
+                                trailingContent = {
+                                    if (actionable && bulkState.stage == BulkStage.OFF) {
+                                        Box {
+                                            IconButton(onClick = { menuExpanded = true }) {
+                                                Icon(Icons.Default.MoreVert, contentDescription = "File actions")
+                                            }
+                                            FileActionsMenu(entry = hit.entry, expanded = menuExpanded,
+                                                onDismiss = { menuExpanded = false },
+                                                onCopy = { onSearchCopy(hit.entry) },
+                                                onShare = { onShare(hit.entry) },
+                                                onRename = { renameFromSearch = true; renameTarget = hit.entry },
+                                                onDelete = { deleteFromSearch = true; deleteTarget = hit.entry })
+                                        }
+                                    }
                                 },
                                 supportingContent = {
                                     Text(
@@ -652,8 +691,8 @@ fun ExplorerScreen(
                                 FileRow(
                                     entry = entry,
                                     onOpen = { if (entry.isDirectory) onOpenDirectory(entry) else onOpenFile(entry, state.entries) },
-                                    onRename = { renameTarget = entry },
-                                    onDelete = { deleteTarget = entry },
+                                    onRename = { renameFromSearch = false; renameTarget = entry },
+                                    onDelete = { deleteFromSearch = false; deleteTarget = entry },
                                     onCopy = { onCopy(entry) },
                                     onShare = { onShare(entry) },
                                     selectionMode = bulkState.stage == BulkStage.SELECTING,
@@ -680,8 +719,8 @@ fun ExplorerScreen(
                                     mode = viewMode,
                                     thumbnails = thumbnailLoader,
                                     onOpen = { if (entry.isDirectory) onOpenDirectory(entry) else onOpenFile(entry, state.entries) },
-                                    onRename = { renameTarget = entry },
-                                    onDelete = { deleteTarget = entry },
+                                    onRename = { renameFromSearch = false; renameTarget = entry },
+                                    onDelete = { deleteFromSearch = false; deleteTarget = entry },
                                     onCopy = { onCopy(entry) },
                                     onShare = { onShare(entry) },
                                     selectionMode = bulkState.stage == BulkStage.SELECTING,
@@ -726,7 +765,7 @@ fun ExplorerScreen(
             initialName = entry.name,
             confirmLabel = "Rename",
             onDismiss = { renameTarget = null },
-            onConfirm = { name -> renameTarget = null; onRename(entry, name) }
+            onConfirm = { name -> renameTarget = null; if (renameFromSearch) onSearchRename(entry, name) else onRename(entry, name) }
         )
     }
     deleteTarget?.let { entry ->
@@ -735,7 +774,7 @@ fun ExplorerScreen(
             title = { Text("Delete ${entry.name}?") },
             text = { Text("This permanently deletes the item. It may not be recoverable.") },
             confirmButton = {
-                TextButton(onClick = { deleteTarget = null; onDelete(entry) }) {
+                TextButton(onClick = { deleteTarget = null; if (deleteFromSearch) onSearchDelete(entry) else onDelete(entry) }) {
                     Text("Delete", color = MaterialTheme.colorScheme.error)
                 }
             },
